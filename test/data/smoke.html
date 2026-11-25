@@ -1,0 +1,30 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Haze smoke test</title>
+<style>
+  :root { color-scheme: light dark; }
+  body {
+    font: 13px/1.5 system-ui, sans-serif;
+    margin: 0;
+    display: grid;
+    place-items: center;
+    height: 100vh;
+  }
+  dl { display: grid; grid-template-columns: auto auto; gap: 2px 16px; margin: 0; }
+  dt { opacity: 0.6; }
+  dd { margin: 0; font-variant-numeric: tabular-nums; }
+</style>
+<h1 id="ok">Renderer is alive</h1>
+<dl>
+  <dt>User agent</dt><dd id="ua"></dd>
+  <dt>Device pixel ratio</dt><dd id="dpr"></dd>
+  <dt>Viewport</dt><dd id="vp"></dd>
+</dl>
+<script>
+  // A local page with no network access: the privacy rule is that a fresh
+  // profile makes zero requests, so the smoke test must not make any either.
+  document.getElementById('ua').textContent = navigator.userAgent;
+  document.getElementById('dpr').textContent = devicePixelRatio;
+  document.getElementById('vp').textContent = innerWidth + ' x ' + innerHeight;
+  document.title = 'Haze smoke test: ok';
+</script>

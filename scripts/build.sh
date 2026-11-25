@@ -135,6 +135,7 @@ ensure_toolchain() {
     "${HAZE_SRC_DIR}/third_party/typescript/linux-amd64/src/lib/tsc"
 
   ensure_clang_format
+  ensure_esbuild
 }
 
 link_tool() {
@@ -164,7 +165,7 @@ ensure_clang_format() {
 
   haze_step "fetching clang-format"
   local fields bucket object sha
-  fields=$(deps_gcs_entry "src/buildtools/${HAZE_FORMAT_DIR}")
+  fields=$(deps_entry "${HAZE_SRC_DIR}/DEPS" gcs "src/buildtools/${HAZE_FORMAT_DIR}")
   bucket=$(printf '%s' "${fields}" | cut -d' ' -f1)
   object=$(printf '%s' "${fields}" | cut -d' ' -f2)
   sha=$(printf '%s' "${fields}" | cut -d' ' -f3)
@@ -181,9 +182,50 @@ ensure_clang_format() {
   haze_info "$("${dest}" --version)"
 }
 
-# Print "bucket object_name sha256" for a gcs entry in Chromium's DEPS.
-deps_gcs_entry() {
-  python3 "${HAZE_SCRIPTS_DIR}/deps_gcs.py" "${HAZE_SRC_DIR}/DEPS" "$1"
+# esbuild is a cipd package in devtools-frontend's own DEPS, and ungoogled
+# prunes it. devtools-frontend bundles a node wrapper for it in node_modules,
+# but the native binary that wrapper needs is gone, so fetch the real one.
+#
+# cipd packages are downloadable over plain HTTPS as a zip. Chromium's own
+# tools/rust/build_rust.py uses the same endpoint.
+ensure_esbuild() {
+  local dest="${HAZE_SRC_DIR}/third_party/devtools-frontend/src/third_party/esbuild/esbuild"
+  if [ -x "${dest}" ]; then
+    return 0
+  fi
+
+  haze_step "fetching esbuild"
+  local fields package version
+  fields=$(deps_entry "${HAZE_SRC_DIR}/third_party/devtools-frontend/src/DEPS" \
+    cipd 'third_party/esbuild')
+  package=$(printf '%s' "${fields}" | cut -d' ' -f1)
+  version=$(printf '%s' "${fields}" | cut -d' ' -f2)
+  # DEPS writes the platform as a placeholder that gclient would expand.
+  package=${package//'${{platform}}'/$(cipd_platform)}
+
+  local zip="${HAZE_DOWNLOAD_DIR}/esbuild-${version}.zip"
+  mkdir -p "${HAZE_DOWNLOAD_DIR}" "$(dirname "${dest}")"
+  haze_run curl -sSfL -o "${zip}" \
+    "https://chrome-infra-packages.appspot.com/dl/${package}/+/${version}"
+  # Unpack just the one member, with python so no unzip is needed.
+  haze_run python3 -I -c 'import sys, zipfile
+with zipfile.ZipFile(sys.argv[1]) as archive, open(sys.argv[2], "wb") as out:
+    out.write(archive.read("esbuild"))' "${zip}" "${dest}"
+  chmod 755 "${dest}"
+  haze_info "esbuild $("${dest}" --version)"
+}
+
+cipd_platform() {
+  case "$(haze_platform)" in
+    mac) if [ "$(uname -m)" = 'arm64' ]; then printf 'mac-arm64\n'; else printf 'mac-amd64\n'; fi ;;
+    win) printf 'windows-amd64\n' ;;
+    *) printf 'linux-amd64\n' ;;
+  esac
+}
+
+# Print one DEPS entry's fields. See scripts/deps_tool.py.
+deps_entry() {
+  python3 -I "${HAZE_SCRIPTS_DIR}/deps_tool.py" "$@"
 }
 
 link_host_tool() {
