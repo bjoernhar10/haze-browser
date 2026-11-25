@@ -47,6 +47,10 @@ HAZE_STAMP_DIR="${HAZE_BUILD_DIR}/stamps"
 # Pre-substitution copies, so domain substitution can be reverted on a rebase.
 HAZE_DOMSUB_CACHE="${HAZE_BUILD_DIR}/domsubcache.tar.gz"
 
+# gn is built from the tree (ungoogled prunes the prebuilt one) and shared by
+# every config.
+HAZE_GN="${HAZE_SRC_DIR}/out/gn_build/gn"
+
 HAZE_OUT_DEV="${HAZE_SRC_DIR}/out/Dev"
 HAZE_OUT_RELEASE="${HAZE_SRC_DIR}/out/Release"
 
@@ -262,4 +266,24 @@ haze_disk_usage() {
   else
     printf -- '-\n'
   fi
+}
+
+# --- build/src git hygiene ---------------------------------------------------
+
+# build/src's history IS the Haze patch series, so anything generated must stay
+# invisible to git there or it would leak into exported patches. overlay/ is the
+# source of truth for build/src/haze/, and the toolchain links are host paths.
+# .git/info/exclude is local to that tree and is not part of any commit.
+haze_exclude_generated() {
+  [ -d "${HAZE_SRC_DIR}/.git" ] || return 0
+  local exclude="${HAZE_SRC_DIR}/.git/info/exclude"
+  mkdir -p "${HAZE_SRC_DIR}/.git/info"
+  local path
+  for path in '/haze/' '/third_party/cpython3/' '/third_party/node/linux/' \
+      '/third_party/gperf/cipd/'; do
+    if ! grep -qxF "${path}" "${exclude}" 2>/dev/null; then
+      printf '%s\n' "${path}" >> "${exclude}"
+      haze_debug "excluded from build/src git: ${path}"
+    fi
+  done
 }

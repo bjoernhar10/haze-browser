@@ -2,6 +2,133 @@
 
 One entry per step: what is new, and how to test it.
 
+## Step 4 — Patch workflow and the first patch (2026-11-25)
+
+**What's new**
+
+- `scripts/patch.sh` with `apply`, `export` and `check`. A patch is a git commit
+  on top of the `baseline` tag in `build/src` and a `git format-patch` mailbox
+  in `patches/<area>/<slug>.patch`, listed in `patches/series`.
+- `export` is a fixed point, which it has to be or every step would carry patch
+  churn. Three things would otherwise change on each run: the commit hash in the
+  `From` line (`--zero-commit`), the trailing git version signature
+  (`--no-signature`) and the diffstat width, which follows the terminal
+  (`--stat=72 --stat-graph-width=10`). `apply` uses `git am`, which restores the
+  original author and date from the file, so those round-trip too.
+- `export` validates the CLAUDE.md header and refuses without it: a `Why:` line,
+  `Security-relevant: yes|no`, and an `Area:` from
+  `core privacy security ui mac win linux`. `Area:` is what decides the target
+  directory; `series` decides the order. It also deletes patch files that no
+  commit produces any more, and stages everything in a temp directory first, so
+  a rejected commit leaves `patches/` untouched.
+- `check` adds a scratch worktree with `--no-checkout` and applies the series to
+  its index with `git apply --cached`. It answers "does this still apply" without
+  materialising 527,761 files: **5 seconds** instead of minutes, which is what
+  makes it usable at the end of every step. It is stricter than `apply`, with no
+  3-way fallback.
+- `build/src/.git/info/exclude` now covers `/haze/` (a copy of `overlay/`, which
+  is the source of truth) and the three host-tool link paths, so generated files
+  can never leak into an exported patch.
+- `prepare.sh` sets the `build/src` identity to `Haze <patches@haze.invalid>`.
+  That identity ends up in every patch's `From:` line, so it has to be identical
+  on every machine or `export` would diff elsewhere.
+- **First patch:** `overlay/BUILD.gn` defines an empty `group("haze")`, and
+  `patches/core/build-hazes-sources-into-the-browser.patch` adds one line,
+  `"//haze"`, to the `deps` of `//chrome/browser:browser`. From now on Haze code
+  is in the build graph.
+
+**How to test**
+
+```sh
+scripts/patch.sh check     # ~5 s, exits 1 naming the first patch that fails
+scripts/patch.sh apply     # baseline + series -> one commit per patch
+scripts/patch.sh export    # and again: patches/ must not change
+
+# the hook really is in the graph:
+build/src/out/gn_build/gn path build/src/out/Dev //chrome/browser:browser //haze
+```
+
+**Verified**
+
+| Check | Result |
+|---|---|
+| `export` run twice | byte-identical (sha256 of all patches + series) |
+| `apply` then `export` | identical bytes despite a different commit sha |
+| `check` on a corrupted patch | exit 1, names the patch |
+| `apply` on a dirty tree | exit 1, refuses to discard changes |
+| `export` without `Why:` / bad `Security-relevant:` / unknown `Area:` | exit 1 each, `patches/` untouched |
+| `gn gen` with the hook | 37,077 targets, `//chrome/browser:browser --> //haze:haze` |
+
+**Not verified yet**
+
+The patch is verified by `gn gen`, not by a compile: an empty group has nothing
+to compile. The first full `chrome` build is still pending (see step 3).
+
+## Step 3 — GN configs and the build script (2026-11-25, incomplete)
+
+**What's new**
+
+- `flags/dev.gn` and `flags/release.gn`. `scripts/build.sh` writes `args.gn` as
+  ungoogled's `flags.gn` followed by the config file, so ungoogled's args come
+  from the submodule and cannot go stale on a rebase. Only the differences from
+  them are in Haze's files.
+- Every arg was checked against `gn args out/<dir> --list` for the pinned
+  version, and both configs pass `gn gen --fail-on-unused-args`, which proves
+  each one exists and is consumed. Args that only repeat a default are left out:
+  `is_official_build` is already false for dev, `blink_symbol_level` and
+  `v8_symbol_level` follow `symbol_level` on their own, and `dcheck_always_on`
+  already resolves correctly per config. `enable_nacl` does not exist in M158.
+
+| Arg | dev | release | Why it is listed |
+|---|---|---|---|
+| `is_component_build` | `true` | — | Defaults to `is_debug`, so turning is_debug off would turn it off too |
+| `is_debug` | `false` | — | Default `true`; a debug build is far slower to build and run |
+| `symbol_level` | `0` | `0` | Default `2`; the biggest single win on link time |
+| `is_official_build` | — | `true` | Default `false` |
+| `use_mold` | `false` | — | See below |
+
+- **`use_mold` is the one real trap.** M158 links non-official Linux builds with
+  mold by default, but mold comes from a DEPS entry the source tarball does not
+  carry, so the dev build would fail at link. Turning it off restores lld from
+  the bundled clang. Official builds exclude mold by themselves, so release does
+  not need the line.
+- Resolved values confirm release keeps `is_cfi = true` and
+  `use_thin_lto = true`, so the config does not weaken upstream hardening.
+- `scripts/build.sh dev|release [targets]` syncs `overlay/` to
+  `build/src/haze/` with `rsync --delete`, ensures the toolchain, builds `gn`,
+  writes `args.gn`, runs `gn gen` and then ninja, logging to
+  `build/logs/build-<config>-<timestamp>.log`.
+- Four pruned host tools had to be linked into the paths the build expects:
+  `python3` (`.gn` sets `script_executable` to `third_party/cpython3`, so
+  `gn gen` fails with exit 127 without it), `node`, `gperf` and `tsc` (pointed
+  at the in-tree `devtools-frontend/node_modules/typescript`, so no global npm
+  install is needed).
+- `gn` is built by calling GN's own `tools/gn/build/gen.py` with
+  `--no-static-libstdc++` rather than `tools/gn/bootstrap/bootstrap.py`, which
+  does not forward that flag. GN links the tool with `-static-libstdc++` on
+  Linux, which needs `libstdc++.a`, a separate package on Fedora and others.
+  Static linking only matters for shipping the binary around.
+
+**Host prerequisites found the hard way**
+
+`ninja-build`, `gperf` and `clang-tools-extra` are needed on Fedora and are not
+in the tarball. ungoogled prunes the prebuilt `gn`, `ninja`, `cpython3`, `node`,
+`gperf`, `tsc` and `clang-format`.
+
+**What is NOT done**
+
+No `chrome` binary yet, so there is **no build time, no launch with a fresh
+profile in `build/profiles/` and no page load**. The build stops in a Crubit
+step that needs `clang-format` at `buildtools/linux64-format/clang-format`;
+`enable_cpp_api_from_rust` is computed from `enable_rust && build_with_chromium`
+and is not a settable gn arg, so Crubit cannot simply be turned off. Install
+`clang-tools-extra`, then `scripts/build.sh dev chrome`.
+
+**Platform coverage**
+
+Linux x64 only. `build.sh` is bash, and its host-tool links are Linux paths;
+macOS and Windows need their own handling.
+
 ## Step 2 — Chromium source and the baseline commit (2026-11-25)
 
 **What's new**

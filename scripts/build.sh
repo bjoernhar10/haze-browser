@@ -79,7 +79,7 @@ main() {
   local started
   started=$(haze_now)
 
-  exclude_generated_paths
+  haze_exclude_generated
   sync_overlay
   ensure_toolchain
   ensure_gn
@@ -90,22 +90,6 @@ main() {
   haze_step "build ${CONFIG} done in $(haze_elapsed "${started}")"
   haze_info "output   ${OUT_DIR}"
   haze_info "log      ${log}"
-}
-
-# build/src is a git repo whose history is the Haze patch series, so anything
-# generated must stay invisible to git or it would show up in exported patches.
-# .git/info/exclude is local to the tree and survives re-running this script.
-exclude_generated_paths() {
-  local exclude="${HAZE_SRC_DIR}/.git/info/exclude"
-  [ -d "${HAZE_SRC_DIR}/.git" ] || return 0
-  mkdir -p "$(dirname "${exclude}")"
-  local path
-  for path in '/haze/' '/third_party/node/linux/' '/third_party/gperf/cipd/'; do
-    if ! grep -qxF "${path}" "${exclude}" 2>/dev/null; then
-      printf '%s\n' "${path}" >> "${exclude}"
-      haze_debug "excluded from build/src git: ${path}"
-    fi
-  done
 }
 
 # overlay/ is the source of truth. build/src/haze/ is a copy and is never
@@ -131,8 +115,11 @@ ensure_toolchain() {
     haze_run python3 ./build/linux/sysroot_scripts/install-sysroot.py --arch=amd64
   fi
 
-  # Pruning removed Chromium's bundled node and gperf, but the build still
-  # looks for them at these paths, so point them at the host's copies.
+  # Pruning removed Chromium's bundled python, node and gperf, but the build
+  # still looks for them at these paths, so point them at the host's copies.
+  # .gn sets script_executable to the cpython3 path, so gn gen fails with exit
+  # 127 without that one.
+  link_host_tool python3 "${HAZE_SRC_DIR}/third_party/cpython3/host/bin/python3"
   link_host_tool node "${HAZE_SRC_DIR}/third_party/node/linux/node-linux-x64/bin/node"
   link_host_tool gperf "${HAZE_SRC_DIR}/third_party/gperf/cipd/bin/gperf"
 }
@@ -148,21 +135,39 @@ link_host_tool() {
   haze_info "linked ${tool}: ${dest} -> ${src}"
 }
 
-# ungoogled prunes the prebuilt gn, so build it from the tree. It lands inside
-# out/, which Chromium's own .gitignore already excludes.
+# ungoogled prunes the prebuilt gn, so build it from the tree once and share it
+# between configs. It lands in out/, which Chromium's own .gitignore excludes.
+#
+# This does what tools/gn/bootstrap/bootstrap.py does, but calls GN's gen.py
+# directly to pass --no-static-libstdc++. bootstrap.py does not forward that
+# flag, and GN's gen.py links the tool with -static-libstdc++ on Linux, which
+# needs libstdc++.a — a separate package on Fedora and several other distros.
+# Static linking only matters for shipping the gn binary around; a locally
+# built tool is fine against the shared library.
 ensure_gn() {
-  local gn="${OUT_DIR}/gn"
-  if [ -x "${gn}" ]; then
-    haze_info "gn present: $("${gn}" --version)"
+  if [ -x "${HAZE_GN}" ]; then
+    haze_info "gn present: $("${HAZE_GN}" --version)"
     return 0
   fi
-  haze_step "bootstrapping gn"
-  mkdir -p "${OUT_DIR}"
+  haze_step "building gn"
   cd "${HAZE_SRC_DIR}"
-  haze_run python3 ./tools/gn/bootstrap/bootstrap.py \
-    -o "${gn}" \
-    --skip-generate-buildfiles \
-    -j "$(haze_jobs)"
+
+  # gn is a host tool, so build it with the toolchain the rest of the build uses.
+  local clang_bin="${HAZE_SRC_DIR}/third_party/llvm-build/Release+Asserts/bin"
+  if [ -x "${clang_bin}/clang++" ]; then
+    export CC="${clang_bin}/clang" CXX="${clang_bin}/clang++"
+  fi
+
+  local gn_build
+  gn_build=$(dirname "${HAZE_GN}")
+  haze_run python3 ./tools/gn/build/gen.py \
+    --no-last-commit-position \
+    --no-static-libstdc++ \
+    --out-path="${gn_build}"
+  # bootstrap.py supplies this stub instead of deriving a real commit position.
+  cp ./tools/gn/bootstrap/last_commit_position.h "${gn_build}/"
+  haze_run ninja -C "${gn_build}" gn -j "$(haze_jobs)"
+  haze_info "built $("${HAZE_GN}" --version)"
 }
 
 write_args() {
@@ -184,7 +189,7 @@ generate() {
   cd "${HAZE_SRC_DIR}"
   # --fail-on-unused-args turns a stale or misspelled arg into an error instead
   # of a silently ignored line.
-  haze_run "${OUT_DIR}/gn" gen "${OUT_DIR}" --fail-on-unused-args
+  haze_run "${HAZE_GN}" gen "${OUT_DIR}" --fail-on-unused-args
 }
 
 compile() {

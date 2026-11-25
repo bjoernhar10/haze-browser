@@ -1,0 +1,16 @@
+# Haze release config: the official, optimized build.
+#
+# scripts/build.sh writes args.gn as ungoogled-chromium's flags.gn followed by
+# this file, so only the differences from ungoogled's args belong here. Every
+# arg below was checked against `gn args out/Release --list` for the pinned
+# Chromium version.
+
+# The shipping configuration: full optimization, no debug runtime, and the
+# hardening an official build turns on. It also implies is_debug = false,
+# is_component_build = false, and dcheck_always_on = false, so none of those
+# are repeated here. use_mold is likewise off by default for official builds.
+is_official_build = true
+
+# Official builds default to symbol_level = 2. Haze has no symbol server yet,
+# so the link time and disk that costs buys nothing.
+symbol_level = 0

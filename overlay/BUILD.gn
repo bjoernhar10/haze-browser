@@ -1,0 +1,10 @@
+# Copyright 2026 The Haze Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+# Everything Haze adds to Chromium hangs off this group, which //chrome/browser
+# depends on. It is empty for now; components/, browser/, common/ and renderer/
+# are added here as they appear, which keeps the hook into Chromium a single
+# GN dependency no matter how much Haze grows.
+group("haze") {
+}

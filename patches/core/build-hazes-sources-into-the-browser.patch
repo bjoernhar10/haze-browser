@@ -1,0 +1,26 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Haze <patches@haze.invalid>
+Date: Wed, 25 Nov 2026 17:27:10 +0100
+Subject: [PATCH] Build Haze's sources into the browser
+
+Why: Gives Haze's own code a single entry point in the Chromium build graph,
+so every later step adds its deps inside //haze instead of touching chrome/
+again. One dep line is also the cheapest thing to carry across a rebase.
+Security-relevant: no
+Area: core
+---
+ chrome/browser/BUILD.gn | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/chrome/browser/BUILD.gn b/chrome/browser/BUILD.gn
+index 570de6f..dbe95b8 100644
+--- a/chrome/browser/BUILD.gn
++++ b/chrome/browser/BUILD.gn
+@@ -2771,6 +2771,7 @@ source_set("browser") {
+     "//device/gamepad/public/cpp:switches",
+     "//google_apis",
+     "//gpu/config",
++    "//haze",
+     "//media",
+     "//media/capture",
+     "//media/capture:capture_switches",

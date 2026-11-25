@@ -116,9 +116,11 @@ baseline() {
   haze_run git init --quiet "${HAZE_SRC_DIR}"
   git -C "${HAZE_SRC_DIR}" symbolic-ref HEAD refs/heads/haze
 
-  # A throwaway local identity: this repo is never pushed anywhere.
-  git -C "${HAZE_SRC_DIR}" config user.name 'Haze baseline'
-  git -C "${HAZE_SRC_DIR}" config user.email 'baseline@haze.invalid'
+  # A fixed local identity. This repo is never pushed, but the identity ends up
+  # in the From: line of every exported patch, so it has to be the same on every
+  # machine or scripts/patch.sh export would produce a diff elsewhere.
+  git -C "${HAZE_SRC_DIR}" config user.name 'Haze'
+  git -C "${HAZE_SRC_DIR}" config user.email 'patches@haze.invalid'
   git -C "${HAZE_SRC_DIR}" config commit.gpgsign false
   # Chromium is ~400k files: keep git from garbage-collecting mid-patch and use
   # the index features that make status on a tree this size bearable.
