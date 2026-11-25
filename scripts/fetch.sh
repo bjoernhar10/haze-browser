@@ -47,17 +47,24 @@ download() {
   fi
 
   haze_step "downloading and verifying tarball (~945 MiB)"
-  # Show the progress bar only on a terminal; in a log it is noise.
-  local hide_progress=''
-  if [ ! -t 2 ]; then
-    hide_progress='--hide-progress-bar'
-  fi
   mkdir -p "${HAZE_DOWNLOAD_DIR}"
-  # shellcheck disable=SC2086  # hide_progress is a single literal flag or empty
-  haze_run "${HAZE_UG_UTILS}/downloads.py" retrieve \
-    -i "${HAZE_UNGOOGLED_DIR}/downloads.ini" \
-    -c "${HAZE_DOWNLOAD_DIR}" \
-    ${hide_progress}
+
+  if [ -t 2 ]; then
+    haze_run "${HAZE_UG_UTILS}/downloads.py" retrieve \
+      -i "${HAZE_UNGOOGLED_DIR}/downloads.ini" \
+      -c "${HAZE_DOWNLOAD_DIR}"
+  else
+    # downloads.py's --hide-progress-bar only covers its urllib fallback. When
+    # curl exists it is spawned as `curl -fL` with our stderr inherited and
+    # prints its meter regardless, which floods a redirected log with
+    # thousands of \r-separated updates. sed (not grep -v, which returns 1
+    # when it drops everything and would trip pipefail) strips the meter.
+    haze_run "${HAZE_UG_UTILS}/downloads.py" retrieve \
+      -i "${HAZE_UNGOOGLED_DIR}/downloads.ini" \
+      -c "${HAZE_DOWNLOAD_DIR}" 2>&1 \
+      | tr '\r' '\n' \
+      | sed -E '/^[[:space:]]*(%|[0-9])/d; /Dload|Xferd/d; /^[[:space:]]*$/d'
+  fi
   haze_stamp_mark download
 }
 
