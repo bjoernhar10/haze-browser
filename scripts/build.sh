@@ -68,7 +68,8 @@ main() {
     set -- chrome
   fi
 
-  haze_require_cmd python3 git rsync ninja gperf node
+  # node is not required on the host: the pinned one is fetched below.
+  haze_require_cmd python3 git rsync ninja gperf curl tar
   haze_require_file "${FLAGS_FILE}"
   haze_assert_version_match
   if [ ! -f "${HAZE_SRC_DIR}/chrome/VERSION" ]; then
@@ -128,10 +129,10 @@ ensure_toolchain() {
   # .gn sets script_executable to the cpython3 path, so gn gen fails with exit
   # 127 without that one.
   link_host_tool python3 "${HAZE_SRC_DIR}/third_party/cpython3/host/bin/python3"
-  link_host_tool node "${HAZE_SRC_DIR}/third_party/node/linux/node-linux-x64/bin/node"
   link_host_tool gperf "${HAZE_SRC_DIR}/third_party/gperf/cipd/bin/gperf"
   ensure_clang_format
   ensure_libclang
+  ensure_node
   ensure_esbuild
   ensure_typescript
 }
@@ -163,6 +164,18 @@ ensure_libclang() {
     'libclang'
 }
 
+# Chromium pins an exact node and asserts the version during the build, so the
+# host's node will not do: third_party/node:check_version fails the build when
+# it differs. The pinned one is a gcs archive like the others.
+ensure_node() {
+  local dir="${HAZE_SRC_DIR}/third_party/node/linux"
+  ensure_gcs_dep \
+    'src/third_party/node/linux' \
+    "${dir}" \
+    "${dir}/node-linux-x64/bin/node" \
+    'node'
+}
+
 # ensure_gcs_dep ENTRY DEST SENTINEL LABEL
 #
 # An entry either names an output_file, which is a single file to install, or it
@@ -190,7 +203,13 @@ ensure_gcs_dep() {
     haze_die "${label} does not match the sha256 DEPS declares for it"
   fi
 
-  case "${object}" in
+  # An object_name can be a bare hash, so the kind of download is decided by
+  # output_file when the entry names one. gclient does the same.
+  local name="${output}"
+  if [ "${name}" = '-' ]; then
+    name="${object##*/}"
+  fi
+  case "${name}" in
     *.tar.xz | *.tar.gz | *.tgz)
       haze_run tar -xf "${archive}" -C "${dest}"
       ;;
