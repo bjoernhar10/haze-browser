@@ -130,23 +130,9 @@ ensure_toolchain() {
   link_host_tool python3 "${HAZE_SRC_DIR}/third_party/cpython3/host/bin/python3"
   link_host_tool node "${HAZE_SRC_DIR}/third_party/node/linux/node-linux-x64/bin/node"
   link_host_tool gperf "${HAZE_SRC_DIR}/third_party/gperf/cipd/bin/gperf"
-  # tsc is not on most hosts, but devtools-frontend ships one in node_modules.
-  link_tool "${HAZE_SRC_DIR}/third_party/devtools-frontend/src/node_modules/typescript/bin/tsc" \
-    "${HAZE_SRC_DIR}/third_party/typescript/linux-amd64/src/lib/tsc"
-
   ensure_clang_format
   ensure_esbuild
-}
-
-link_tool() {
-  local src="$1" dest="$2"
-  haze_require_file "${src}"
-  if [ -L "${dest}" ] && [ "$(readlink "${dest}")" = "${src}" ]; then
-    return 0
-  fi
-  mkdir -p "$(dirname "${dest}")"
-  ln -sfn "${src}" "${dest}"
-  haze_info "linked ${dest##*/} -> ${src}"
+  ensure_typescript
 }
 
 # clang-format is not part of the clang package: Chromium fetches it as a plain
@@ -182,37 +168,71 @@ ensure_clang_format() {
   haze_info "$("${dest}" --version)"
 }
 
-# esbuild is a cipd package in devtools-frontend's own DEPS, and ungoogled
-# prunes it. devtools-frontend bundles a node wrapper for it in node_modules,
-# but the native binary that wrapper needs is gone, so fetch the real one.
-#
-# cipd packages are downloadable over plain HTTPS as a zip. Chromium's own
-# tools/rust/build_rust.py uses the same endpoint.
+# Several tools the build needs are cipd packages listed in DEPS that
+# ungoogled prunes. cipd serves them as plain zips over HTTPS; Chromium's own
+# tools/rust/build_rust.py uses the same endpoint. Versions are read from DEPS
+# on every build rather than pinned here, so a rebase picks up the new ones.
+
+# devtools-frontend bundles a node wrapper for esbuild in node_modules, but the
+# native binary that wrapper needs is pruned, so fetch the real package.
 ensure_esbuild() {
-  local dest="${HAZE_SRC_DIR}/third_party/devtools-frontend/src/third_party/esbuild/esbuild"
-  if [ -x "${dest}" ]; then
+  local dir="${HAZE_SRC_DIR}/third_party/devtools-frontend/src/third_party/esbuild"
+  ensure_cipd_package \
+    "${HAZE_SRC_DIR}/third_party/devtools-frontend/src/DEPS" \
+    'third_party/esbuild' \
+    "${dir}" \
+    "${dir}/esbuild" \
+    'esbuild'
+}
+
+# The TypeScript package is more than the compiler: the build also reads the
+# lib.*.d.ts standard library out of the same directory, so the whole package
+# has to be there, not just a tsc binary.
+ensure_typescript() {
+  local platform dir
+  platform=$(cipd_platform)
+  dir="${HAZE_SRC_DIR}/third_party/typescript/${platform}/src"
+  ensure_cipd_package \
+    "${HAZE_SRC_DIR}/DEPS" \
+    "src/third_party/typescript/${platform}/src" \
+    "${dir}" \
+    "${dir}/lib/tsc" \
+    'TypeScript'
+}
+
+# ensure_cipd_package DEPS ENTRY DEST SENTINEL LABEL
+ensure_cipd_package() {
+  local deps="$1" entry="$2" dest="$3" sentinel="$4" label="$5"
+  if [ -e "${sentinel}" ]; then
     return 0
   fi
 
-  haze_step "fetching esbuild"
+  haze_step "fetching ${label}"
   local fields package version
-  fields=$(deps_entry "${HAZE_SRC_DIR}/third_party/devtools-frontend/src/DEPS" \
-    cipd 'third_party/esbuild')
+  fields=$(deps_entry "${deps}" cipd "${entry}")
   package=$(printf '%s' "${fields}" | cut -d' ' -f1)
   version=$(printf '%s' "${fields}" | cut -d' ' -f2)
   # DEPS writes the platform as a placeholder that gclient would expand.
   package=${package//'${{platform}}'/$(cipd_platform)}
 
-  local zip="${HAZE_DOWNLOAD_DIR}/esbuild-${version}.zip"
-  mkdir -p "${HAZE_DOWNLOAD_DIR}" "$(dirname "${dest}")"
+  local zip="${HAZE_DOWNLOAD_DIR}/${package##*/}-${version}.zip"
+  mkdir -p "${HAZE_DOWNLOAD_DIR}" "${dest}"
   haze_run curl -sSfL -o "${zip}" \
     "https://chrome-infra-packages.appspot.com/dl/${package}/+/${version}"
-  # Unpack just the one member, with python so no unzip is needed.
-  haze_run python3 -I -c 'import sys, zipfile
-with zipfile.ZipFile(sys.argv[1]) as archive, open(sys.argv[2], "wb") as out:
-    out.write(archive.read("esbuild"))' "${zip}" "${dest}"
-  chmod 755 "${dest}"
-  haze_info "esbuild $("${dest}" --version)"
+  # zipfile.extractall drops the executable bit, so restore each member's mode.
+  haze_run python3 -I -c 'import os, sys, zipfile
+with zipfile.ZipFile(sys.argv[1]) as archive:
+    for member in archive.infolist():
+        archive.extract(member, sys.argv[2])
+        mode = member.external_attr >> 16
+        if mode:
+            os.chmod(os.path.join(sys.argv[2], member.filename), mode)' \
+    "${zip}" "${dest}"
+
+  if [ ! -e "${sentinel}" ]; then
+    haze_die "${label} package did not contain ${sentinel##*/}"
+  fi
+  haze_info "${label} ${version}"
 }
 
 cipd_platform() {
