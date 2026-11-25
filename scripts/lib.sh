@@ -280,7 +280,7 @@ haze_exclude_generated() {
   mkdir -p "${HAZE_SRC_DIR}/.git/info"
   local path
   for path in '/haze/' '/third_party/cpython3/' '/third_party/node/linux/' \
-      '/third_party/gperf/cipd/'; do
+      '/third_party/gperf/cipd/' '/third_party/typescript/' '/buildtools/'; do
     if ! grep -qxF "${path}" "${exclude}" 2>/dev/null; then
       printf '%s\n' "${path}" >> "${exclude}"
       haze_debug "excluded from build/src git: ${path}"

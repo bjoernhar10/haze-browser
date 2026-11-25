@@ -37,6 +37,14 @@ USAGE
   exit 2
 }
 
+# Chromium keeps clang-format in a per-platform buildtools directory, whose name
+# is also the DEPS entry name.
+case "$(uname -s)" in
+  Darwin) HAZE_FORMAT_DIR='mac-format' ;;
+  MINGW* | MSYS* | CYGWIN*) HAZE_FORMAT_DIR='win-format' ;;
+  *) HAZE_FORMAT_DIR='linux64-format' ;;
+esac
+
 CONFIG=''
 OUT_DIR=''
 FLAGS_FILE=''
@@ -122,6 +130,60 @@ ensure_toolchain() {
   link_host_tool python3 "${HAZE_SRC_DIR}/third_party/cpython3/host/bin/python3"
   link_host_tool node "${HAZE_SRC_DIR}/third_party/node/linux/node-linux-x64/bin/node"
   link_host_tool gperf "${HAZE_SRC_DIR}/third_party/gperf/cipd/bin/gperf"
+  # tsc is not on most hosts, but devtools-frontend ships one in node_modules.
+  link_tool "${HAZE_SRC_DIR}/third_party/devtools-frontend/src/node_modules/typescript/bin/tsc" \
+    "${HAZE_SRC_DIR}/third_party/typescript/linux-amd64/src/lib/tsc"
+
+  ensure_clang_format
+}
+
+link_tool() {
+  local src="$1" dest="$2"
+  haze_require_file "${src}"
+  if [ -L "${dest}" ] && [ "$(readlink "${dest}")" = "${src}" ]; then
+    return 0
+  fi
+  mkdir -p "$(dirname "${dest}")"
+  ln -sfn "${src}" "${dest}"
+  haze_info "linked ${dest##*/} -> ${src}"
+}
+
+# clang-format is not part of the clang package: Chromium fetches it as a plain
+# Google Cloud Storage object listed in DEPS, and ungoogled prunes it. A Crubit
+# step that generates C++ APIs from Rust needs it, and that step cannot be
+# switched off, because enable_cpp_api_from_rust is computed from enable_rust
+# and build_with_chromium rather than being a gn arg.
+#
+# The object name and its sha256 are read out of DEPS on each run instead of
+# being hardcoded, so a rebase onto a new Chromium picks up the new binary.
+ensure_clang_format() {
+  local dest="${HAZE_SRC_DIR}/buildtools/${HAZE_FORMAT_DIR}/clang-format"
+  if [ -x "${dest}" ]; then
+    return 0
+  fi
+
+  haze_step "fetching clang-format"
+  local fields bucket object sha
+  fields=$(deps_gcs_entry "src/buildtools/${HAZE_FORMAT_DIR}")
+  bucket=$(printf '%s' "${fields}" | cut -d' ' -f1)
+  object=$(printf '%s' "${fields}" | cut -d' ' -f2)
+  sha=$(printf '%s' "${fields}" | cut -d' ' -f3)
+
+  local tmp="${HAZE_DOWNLOAD_DIR}/clang-format.${object}"
+  mkdir -p "${HAZE_DOWNLOAD_DIR}"
+  haze_run curl -sSfL -o "${tmp}" "https://storage.googleapis.com/${bucket}/${object}"
+  if ! printf '%s  %s\n' "${sha}" "${tmp}" | sha256sum -c - >/dev/null 2>&1; then
+    rm -f "${tmp}"
+    haze_die "clang-format does not match the sha256 DEPS declares for it"
+  fi
+  mkdir -p "$(dirname "${dest}")"
+  install -m755 "${tmp}" "${dest}"
+  haze_info "$("${dest}" --version)"
+}
+
+# Print "bucket object_name sha256" for a gcs entry in Chromium's DEPS.
+deps_gcs_entry() {
+  python3 "${HAZE_SCRIPTS_DIR}/deps_gcs.py" "${HAZE_SRC_DIR}/DEPS" "$1"
 }
 
 link_host_tool() {
