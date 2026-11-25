@@ -1,0 +1,15 @@
+# Everything the pipeline produces: Chromium source tree, out/, logs, test profiles.
+/build/
+
+# Generated from tokens/haze.json by scripts/gen_tokens.py. Edit the JSON instead.
+/overlay/common/haze_tokens.h
+
+# Python tooling
+__pycache__/
+*.py[cod]
+
+# Editor and OS cruft
+.DS_Store
+Thumbs.db
+*.swp
+*~
