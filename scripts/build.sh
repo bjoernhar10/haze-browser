@@ -131,41 +131,81 @@ ensure_toolchain() {
   link_host_tool node "${HAZE_SRC_DIR}/third_party/node/linux/node-linux-x64/bin/node"
   link_host_tool gperf "${HAZE_SRC_DIR}/third_party/gperf/cipd/bin/gperf"
   ensure_clang_format
+  ensure_libclang
   ensure_esbuild
   ensure_typescript
 }
 
-# clang-format is not part of the clang package: Chromium fetches it as a plain
-# Google Cloud Storage object listed in DEPS, and ungoogled prunes it. A Crubit
-# step that generates C++ APIs from Rust needs it, and that step cannot be
-# switched off, because enable_cpp_api_from_rust is computed from enable_rust
-# and build_with_chromium rather than being a gn arg.
-#
-# The object name and its sha256 are read out of DEPS on each run instead of
-# being hardcoded, so a rebase onto a new Chromium picks up the new binary.
+# Tools Chromium downloads from Google Cloud Storage rather than building, and
+# which ungoogled prunes. Each is declared in DEPS with a sha256, so this
+# verifies what it fetches the same way scripts/fetch.sh verifies the tarball.
+
+# clang-format is not part of the clang package. A Crubit step that generates
+# C++ APIs from Rust needs it, and that step cannot be switched off, because
+# enable_cpp_api_from_rust is computed from enable_rust and build_with_chromium
+# rather than being a gn arg.
 ensure_clang_format() {
-  local dest="${HAZE_SRC_DIR}/buildtools/${HAZE_FORMAT_DIR}/clang-format"
-  if [ -x "${dest}" ]; then
+  local dir="${HAZE_SRC_DIR}/buildtools/${HAZE_FORMAT_DIR}"
+  ensure_gcs_dep \
+    "src/buildtools/${HAZE_FORMAT_DIR}" \
+    "${dir}" \
+    "${dir}/clang-format" \
+    'clang-format'
+}
+
+# V8's metagen imports libclang's python bindings to generate instance types.
+ensure_libclang() {
+  local dir="${HAZE_SRC_DIR}/third_party/llvm-libclang"
+  ensure_gcs_dep \
+    'src/third_party/llvm-libclang' \
+    "${dir}" \
+    "${dir}/bindings/python/clang/cindex.py" \
+    'libclang'
+}
+
+# ensure_gcs_dep ENTRY DEST SENTINEL LABEL
+#
+# An entry either names an output_file, which is a single file to install, or it
+# does not, which means the object is an archive to unpack into DEST. That is
+# the same distinction gclient makes.
+ensure_gcs_dep() {
+  local entry="$1" dest="$2" sentinel="$3" label="$4"
+  if [ -e "${sentinel}" ]; then
     return 0
   fi
 
-  haze_step "fetching clang-format"
-  local fields bucket object sha
-  fields=$(deps_entry "${HAZE_SRC_DIR}/DEPS" gcs "src/buildtools/${HAZE_FORMAT_DIR}")
+  haze_step "fetching ${label}"
+  local fields bucket object sha output
+  fields=$(deps_entry "${HAZE_SRC_DIR}/DEPS" gcs "${entry}" "$(haze_platform)")
   bucket=$(printf '%s' "${fields}" | cut -d' ' -f1)
   object=$(printf '%s' "${fields}" | cut -d' ' -f2)
   sha=$(printf '%s' "${fields}" | cut -d' ' -f3)
+  output=$(printf '%s' "${fields}" | cut -d' ' -f4)
 
-  local tmp="${HAZE_DOWNLOAD_DIR}/clang-format.${object}"
-  mkdir -p "${HAZE_DOWNLOAD_DIR}"
-  haze_run curl -sSfL -o "${tmp}" "https://storage.googleapis.com/${bucket}/${object}"
-  if ! printf '%s  %s\n' "${sha}" "${tmp}" | sha256sum -c - >/dev/null 2>&1; then
-    rm -f "${tmp}"
-    haze_die "clang-format does not match the sha256 DEPS declares for it"
+  local archive="${HAZE_DOWNLOAD_DIR}/${object##*/}"
+  mkdir -p "${HAZE_DOWNLOAD_DIR}" "${dest}"
+  haze_run curl -sSfL -o "${archive}" "https://storage.googleapis.com/${bucket}/${object}"
+  if ! printf '%s  %s\n' "${sha}" "${archive}" | sha256sum -c - >/dev/null 2>&1; then
+    rm -f "${archive}"
+    haze_die "${label} does not match the sha256 DEPS declares for it"
   fi
-  mkdir -p "$(dirname "${dest}")"
-  install -m755 "${tmp}" "${dest}"
-  haze_info "$("${dest}" --version)"
+
+  case "${object}" in
+    *.tar.xz | *.tar.gz | *.tgz)
+      haze_run tar -xf "${archive}" -C "${dest}"
+      ;;
+    *)
+      if [ "${output}" = '-' ]; then
+        haze_die "${label}: DEPS names no output_file and the object is not an archive"
+      fi
+      install -m755 "${archive}" "${dest}/${output}"
+      ;;
+  esac
+
+  if [ ! -e "${sentinel}" ]; then
+    haze_die "${label} download did not provide ${sentinel##*/}"
+  fi
+  haze_info "${label} ready"
 }
 
 # Several tools the build needs are cipd packages listed in DEPS that
