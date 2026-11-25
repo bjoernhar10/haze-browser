@@ -26,6 +26,7 @@ HAZE_ROOT=$(cd -- "${HAZE_SCRIPTS_DIR}/.." && pwd)
 
 HAZE_VERSION_FILE="${HAZE_ROOT}/chromium_version.txt"
 HAZE_UNGOOGLED_DIR="${HAZE_ROOT}/ungoogled-chromium"
+HAZE_UG_UTILS="${HAZE_UNGOOGLED_DIR}/utils"
 HAZE_OVERLAY_DIR="${HAZE_ROOT}/overlay"
 HAZE_PATCHES_DIR="${HAZE_ROOT}/patches"
 HAZE_SERIES_FILE="${HAZE_PATCHES_DIR}/series"
@@ -37,9 +38,15 @@ HAZE_TEST_DATA_DIR="${HAZE_ROOT}/test/data"
 # Everything below build/ is gitignored and may be deleted at any time.
 HAZE_BUILD_DIR="${HAZE_ROOT}/build"
 HAZE_SRC_DIR="${HAZE_BUILD_DIR}/src"
-HAZE_DOWNLOAD_DIR="${HAZE_BUILD_DIR}/download"
+HAZE_DOWNLOAD_DIR="${HAZE_BUILD_DIR}/download_cache"
 HAZE_LOG_DIR="${HAZE_BUILD_DIR}/logs"
 HAZE_PROFILE_DIR="${HAZE_BUILD_DIR}/profiles"
+# Stamps record finished pipeline steps. They live outside build/src so the
+# Chromium tree and its baseline git repo stay clean.
+HAZE_STAMP_DIR="${HAZE_BUILD_DIR}/stamps"
+# Pre-substitution copies, so domain substitution can be reverted on a rebase.
+HAZE_DOMSUB_CACHE="${HAZE_BUILD_DIR}/domsubcache.tar.gz"
+
 HAZE_OUT_DEV="${HAZE_SRC_DIR}/out/Dev"
 HAZE_OUT_RELEASE="${HAZE_SRC_DIR}/out/Release"
 
@@ -167,4 +174,92 @@ haze_jobs() {
     mac) sysctl -n hw.ncpu ;;
     *) nproc ;;
   esac
+}
+
+# --- Step stamps -------------------------------------------------------------
+
+haze_stamp_done() {
+  [ -f "${HAZE_STAMP_DIR}/$1" ]
+}
+
+haze_stamp_mark() {
+  mkdir -p "${HAZE_STAMP_DIR}"
+  date -u +'%Y-%m-%dT%H:%M:%SZ' > "${HAZE_STAMP_DIR}/$1"
+}
+
+# Stamps describe build/src. If the tree is gone, they are lies: drop them so a
+# re-run rebuilds from scratch instead of skipping steps that never happened.
+haze_drop_stale_stamps() {
+  if [ -f "${HAZE_SRC_DIR}/chrome/VERSION" ]; then
+    return 0
+  fi
+  local stamp
+  for stamp in unpack prune patches domsub; do
+    if haze_stamp_done "${stamp}"; then
+      haze_warn "build/src is missing; dropping stale stamp: ${stamp}"
+      rm -f "${HAZE_STAMP_DIR}/${stamp}"
+    fi
+  done
+}
+
+# --- Version checks ----------------------------------------------------------
+
+# ungoogled's utils read their OWN chromium_version.txt, not Haze's. If the two
+# disagree, the pipeline would quietly work on a different version than Haze
+# pins, so refuse to run.
+haze_assert_version_match() {
+  local ours theirs
+  ours=$(haze_chromium_version)
+  haze_require_file "${HAZE_UNGOOGLED_DIR}/chromium_version.txt"
+  theirs=$(tr -d '[:space:]' < "${HAZE_UNGOOGLED_DIR}/chromium_version.txt")
+  if [ "${ours}" != "${theirs}" ]; then
+    haze_error "version mismatch:"
+    haze_error "  chromium_version.txt pins      ${ours}"
+    haze_error "  ungoogled-chromium is built for ${theirs} (tag $(haze_ungoogled_tag))"
+    haze_die "ungoogled's utils read their own file, so the pipeline would use ${theirs}"
+  fi
+}
+
+# The version of the extracted tree, read from chrome/VERSION.
+haze_src_version() {
+  local f="${HAZE_SRC_DIR}/chrome/VERSION"
+  haze_require_file "${f}"
+  # chrome/VERSION holds MAJOR=..., MINOR=..., BUILD=..., PATCH=...
+  awk -F= '/^(MAJOR|MINOR|BUILD|PATCH)=/ { v[$1] = $2 }
+           END { printf "%s.%s.%s.%s\n", v["MAJOR"], v["MINOR"], v["BUILD"], v["PATCH"] }' "${f}"
+}
+
+haze_assert_src_version() {
+  local pinned actual
+  pinned=$(haze_chromium_version)
+  actual=$(haze_src_version)
+  if [ "${pinned}" != "${actual}" ]; then
+    haze_die "build/src holds Chromium ${actual}, but chromium_version.txt pins ${pinned}"
+  fi
+}
+
+# --- Timing and size ---------------------------------------------------------
+
+haze_now() {
+  date +%s
+}
+
+# haze_elapsed START_EPOCH -> "4m 07s" or "1h 12m 03s"
+haze_elapsed() {
+  local total=$(( $(date +%s) - $1 ))
+  local h=$(( total / 3600 )) m=$(( (total % 3600) / 60 )) s=$(( total % 60 ))
+  if [ "${h}" -gt 0 ]; then
+    printf '%dh %02dm %02ds\n' "${h}" "${m}" "${s}"
+  else
+    printf '%dm %02ds\n' "${m}" "${s}"
+  fi
+}
+
+# Human-readable size of a path, or "-" if it does not exist.
+haze_disk_usage() {
+  if [ -e "$1" ]; then
+    du -sh "$1" 2>/dev/null | cut -f1
+  else
+    printf -- '-\n'
+  fi
 }
