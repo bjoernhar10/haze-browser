@@ -30,18 +30,38 @@ ENTRY_RE = r"'%s':\s*\{(.*?)\n  \},"
 
 
 def read_entry(deps_path, name):
+    """Return (entry body, vars) for one DEPS entry."""
     with open(deps_path, encoding='utf-8') as deps_file:
         deps = deps_file.read()
     entry = re.search(ENTRY_RE % re.escape(name), deps, re.S)
     if not entry:
         sys.exit('deps_tool.py: no %s entry in %s' % (name, deps_path))
-    return entry.group(1)
+    return entry.group(1), read_vars(deps)
 
 
-def field(body, name, default=None):
+def read_vars(deps):
+    """Map the names in a DEPS `vars = {...}` block to their string values."""
+    block = re.search(r'^vars\s*=\s*\{(.*?)^\}', deps, re.S | re.M)
+    if not block:
+        return {}
+    return dict(re.findall(r"'([A-Za-z0-9_]+)':\s*'([^']*)'", block.group(1)))
+
+
+def field(body, name, default=None, variables=None):
+    """Read one quoted field, resolving a Var('name') indirection."""
     found = re.search(r"'%s':\s*'([^']+)'" % name, body)
     if found:
         return found.group(1)
+
+    # Entries may reference a variable instead of spelling the value out, e.g.
+    #   'version': Var('dawn_go_version'),
+    ref = re.search(r"'%s':\s*Var\('([A-Za-z0-9_]+)'\)" % name, body)
+    if ref and variables is not None:
+        value = variables.get(ref.group(1))
+        if value is None:
+            sys.exit('deps_tool.py: DEPS has no var %s' % ref.group(1))
+        return value
+
     if default is not None:
         return default
     sys.exit('deps_tool.py: entry has no %s' % name)
@@ -74,18 +94,21 @@ def gcs(body, host_os):
     ]
 
 
-def cipd(body):
-    return [field(body, 'package'), field(body, 'version')]
+def cipd(body, variables):
+    return [
+        field(body, 'package', variables=variables),
+        field(body, 'version', variables=variables),
+    ]
 
 
 def main(argv):
     if len(argv) < 4 or argv[2] not in ('gcs', 'cipd'):
         sys.exit('usage: deps_tool.py <DEPS> gcs|cipd <entry> [host_os]')
-    body = read_entry(argv[1], argv[3])
+    body, variables = read_entry(argv[1], argv[3])
     if argv[2] == 'gcs':
         values = gcs(body, argv[4] if len(argv) > 4 else 'linux')
     else:
-        values = cipd(body)
+        values = cipd(body, variables)
     print(' '.join(values))
 
 

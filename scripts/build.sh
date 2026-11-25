@@ -135,6 +135,7 @@ ensure_toolchain() {
   ensure_node
   ensure_esbuild
   ensure_typescript
+  ensure_dawn_go
 }
 
 # Tools Chromium downloads from Google Cloud Storage rather than building, and
@@ -257,6 +258,22 @@ ensure_typescript() {
     "${dir}" \
     "${dir}/lib/tsc" \
     'TypeScript'
+}
+
+# Dawn generates its WGSL/Tint sources at build time with a Go program, which
+# tools/generate-sources-gn.py runs from a fixed path. Dawn pins the toolchain
+# in its own DEPS, listing each architecture explicitly rather than using the
+# platform placeholder, because the fetch and run architectures can differ.
+ensure_dawn_go() {
+  local platform dir
+  platform=$(cipd_platform)
+  dir="${HAZE_SRC_DIR}/third_party/dawn/tools/golang/${platform}"
+  ensure_cipd_package \
+    "${HAZE_SRC_DIR}/third_party/dawn/DEPS" \
+    "tools/golang/${platform}" \
+    "${dir}" \
+    "${dir}/bin/go" \
+    'Go (for Dawn)'
 }
 
 # ensure_cipd_package DEPS ENTRY DEST SENTINEL LABEL
