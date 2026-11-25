@@ -53,6 +53,16 @@ on macOS (`sysctl -n hw.ncpu` path in `haze_jobs`) and on Windows under Git
 Bash (`haze_platform` returning `win`); Windows builds will use
 `scripts/build.ps1`, which does not exist yet.
 
+**Decisions**
+
+- License is BSD-3-Clause, matching Chromium and ungoogled-chromium (SPEC §1).
+  The repo started out MIT; swapped before any outside contribution. Patches
+  modify BSD-3-Clause Chromium files and cannot be relicensed, so one
+  permissive license across the tree keeps per-file licensing honest and
+  leaves upstreaming possible. New files carry the Chromium-style header.
+- `adblock-rust`, planned for the content blocker, is MPL-2.0. It combines
+  fine with BSD-3-Clause, but modifications to its files must be published.
+
 **Open decision**
 
 `.gitignore` ignores the generated token header at

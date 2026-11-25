@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+# Copyright 2026 The Haze Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+#
 # Shared paths, logging and error handling for every Haze script.
 #
 # Source it as the first thing in a script:

@@ -40,4 +40,6 @@ usable at any point.
 
 ## License
 
-[MIT](LICENSE). Chromium and ungoogled-chromium keep their own licenses.
+Haze's own code is [BSD-3-Clause](LICENSE), like Chromium and
+ungoogled-chromium. Vendored third-party code keeps its own license;
+`chrome://credits` lists all of them.
