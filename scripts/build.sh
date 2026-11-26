@@ -37,13 +37,8 @@ USAGE
   exit 2
 }
 
-# Chromium keeps clang-format in a per-platform buildtools directory, whose name
-# is also the DEPS entry name.
-case "$(uname -s)" in
-  Darwin) HAZE_FORMAT_DIR='mac-format' ;;
-  MINGW* | MSYS* | CYGWIN*) HAZE_FORMAT_DIR='win-format' ;;
-  *) HAZE_FORMAT_DIR='linux64-format' ;;
-esac
+# clang-format sits beside gn, in a sibling of the same per-platform directory.
+HAZE_FORMAT_DIR="${HAZE_BUILDTOOLS_DIR}-format"
 
 CONFIG=''
 OUT_DIR=''
@@ -290,6 +285,7 @@ ensure_cipd_package() {
   version=$(printf '%s' "${fields}" | cut -d' ' -f2)
   # DEPS writes the platform as a placeholder that gclient would expand.
   package=${package//'${{platform}}'/$(cipd_platform)}
+  package=${package//'${{arch}}'/$(cipd_arch)}
 
   local zip="${HAZE_DOWNLOAD_DIR}/${package##*/}-${version}.zip"
   mkdir -p "${HAZE_DOWNLOAD_DIR}" "${dest}"
@@ -309,6 +305,13 @@ with zipfile.ZipFile(sys.argv[1]) as archive:
     haze_die "${label} package did not contain ${sentinel##*/}"
   fi
   haze_info "${label} ${version}"
+}
+
+# Packages that are built per OS but named per architecture, e.g. gn/gn/linux-amd64.
+cipd_arch() {
+  local platform
+  platform=$(cipd_platform)
+  printf '%s\n' "${platform#*-}"
 }
 
 cipd_platform() {
@@ -344,30 +347,16 @@ link_host_tool() {
 # needs libstdc++.a — a separate package on Fedora and several other distros.
 # Static linking only matters for shipping the gn binary around; a locally
 # built tool is fine against the shared library.
+# Building gn from tools/gn/ also works, but it yields a gn whose version is
+# whatever that source happens to be, while DEPS names the revision the rest of
+# the build files were written against.
 ensure_gn() {
-  if [ -x "${HAZE_GN}" ]; then
-    haze_info "gn present: $("${HAZE_GN}" --version)"
-    return 0
-  fi
-  haze_step "building gn"
-  cd "${HAZE_SRC_DIR}"
-
-  # gn is a host tool, so build it with the toolchain the rest of the build uses.
-  local clang_bin="${HAZE_SRC_DIR}/third_party/llvm-build/Release+Asserts/bin"
-  if [ -x "${clang_bin}/clang++" ]; then
-    export CC="${clang_bin}/clang" CXX="${clang_bin}/clang++"
-  fi
-
-  local gn_build
-  gn_build=$(dirname "${HAZE_GN}")
-  haze_run python3 ./tools/gn/build/gen.py \
-    --no-last-commit-position \
-    --no-static-libstdc++ \
-    --out-path="${gn_build}"
-  # bootstrap.py supplies this stub instead of deriving a real commit position.
-  cp ./tools/gn/bootstrap/last_commit_position.h "${gn_build}/"
-  haze_run ninja -C "${gn_build}" gn -j "$(haze_jobs)"
-  haze_info "built $("${HAZE_GN}" --version)"
+  ensure_cipd_package \
+    "${HAZE_SRC_DIR}/DEPS" \
+    "src/buildtools/${HAZE_BUILDTOOLS_DIR}" \
+    "${HAZE_SRC_DIR}/buildtools/${HAZE_BUILDTOOLS_DIR}" \
+    "${HAZE_GN}" \
+    'gn'
 }
 
 write_args() {

@@ -47,9 +47,16 @@ HAZE_STAMP_DIR="${HAZE_BUILD_DIR}/stamps"
 # Pre-substitution copies, so domain substitution can be reverted on a rebase.
 HAZE_DOMSUB_CACHE="${HAZE_BUILD_DIR}/domsubcache.tar.gz"
 
-# gn is built from the tree (ungoogled prunes the prebuilt one) and shared by
-# every config.
-HAZE_GN="${HAZE_SRC_DIR}/out/gn_build/gn"
+# Chromium keeps its host tools in a per-platform buildtools directory, whose
+# name is also the DEPS entry name. Tools in the tree look for gn there and
+# nowhere else (v8/tools/metagen, tools/mb/mb.py), so the fetched gn has to go
+# to exactly this path, not to a directory of Haze's choosing.
+case "$(uname -s)" in
+  Darwin) HAZE_BUILDTOOLS_DIR='mac' ;;
+  MINGW* | MSYS* | CYGWIN*) HAZE_BUILDTOOLS_DIR='win' ;;
+  *) HAZE_BUILDTOOLS_DIR='linux64' ;;
+esac
+HAZE_GN="${HAZE_SRC_DIR}/buildtools/${HAZE_BUILDTOOLS_DIR}/gn"
 
 HAZE_OUT_DEV="${HAZE_SRC_DIR}/out/Dev"
 HAZE_OUT_RELEASE="${HAZE_SRC_DIR}/out/Release"
