@@ -23,6 +23,7 @@
 #
 #   Why: one to three sentences.
 #   Security-relevant: yes|no
+#   Security: what it touches and why that is safe (only with "yes")
 #   Area: core|privacy|security|ui|mac|win|linux
 #
 # Area decides which patches/<area>/ directory the patch is written to; series
@@ -194,9 +195,10 @@ trailer() {
 # The header from CLAUDE.md is not decoration: without it a patch cannot be
 # placed in patches/ and its security impact is unrecorded.
 validate_commit() {
-  local sha="$1" subject="$2" area="$3" why security
+  local sha="$1" subject="$2" area="$3" why security reason
   why=$(trailer "${sha}" 'Why')
   security=$(trailer "${sha}" 'Security-relevant')
+  reason=$(trailer "${sha}" 'Security')
   local short
   short=$(src_git log -1 --format='%h %s' "${sha}")
 
@@ -206,6 +208,10 @@ validate_commit() {
     yes | no) ;;
     *) haze_die "commit ${short} needs 'Security-relevant: yes' or 'no', got '${security}'" ;;
   esac
+  # A "yes" without a stated impact is the one a reviewer cannot check.
+  if [ "${security}" = yes ] && [ -z "${reason}" ]; then
+    haze_die "commit ${short} is security-relevant but has no 'Security:' line saying why it is safe"
+  fi
   [ -n "${area}" ] || haze_die "commit ${short} has no 'Area:' line (one of: ${HAZE_PATCH_AREAS})"
   if ! printf '%s\n' ${HAZE_PATCH_AREAS} | grep -qxF "${area}"; then
     haze_die "commit ${short} has unknown Area '${area}'; use one of: ${HAZE_PATCH_AREAS}"

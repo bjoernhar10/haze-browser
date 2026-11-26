@@ -1,0 +1,50 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Haze <patches@haze.invalid>
+Date: Thu, 26 Nov 2026 22:35:32 +0100
+Subject: [PATCH] Keep Haze's encryption key under its own name in the OS
+ keyring
+
+Why: Passwords and cookies are encrypted with a key kept in the Secret Service,
+KWallet or the macOS Keychain under "Chromium Safe Storage". Sharing that entry
+would let Haze and an installed Chromium read, and replace, each other's key.
+Security-relevant: yes
+Security: This only renames the keyring entry, folder and app
+name; how the key is generated, stored and used is unchanged.
+Area: core
+---
+ .../async/browser/freedesktop_secret_key_provider.h         | 6 +++---
+ components/os_crypt/common/keychain_password_mac.mm         | 4 ++--
+ 2 files changed, 5 insertions(+), 5 deletions(-)
+
+diff --git a/components/os_crypt/async/browser/freedesktop_secret_key_provider.h b/components/os_crypt/async/browser/freedesktop_secret_key_provider.h
+index e2eb395..73fee5a 100644
+--- a/components/os_crypt/async/browser/freedesktop_secret_key_provider.h
++++ b/components/os_crypt/async/browser/freedesktop_secret_key_provider.h
+@@ -158,9 +158,9 @@ class FreedesktopSecretKeyProvider : public KeyProvider {
+   static constexpr char kKeyName[] = "Chrome Safe Storage";
+   static constexpr char kAppName[] = "chrome";
+ #else
+-  static constexpr char kKWalletFolder[] = "Chromium Keys";
+-  static constexpr char kKeyName[] = "Chromium Safe Storage";
+-  static constexpr char kAppName[] = "chromium";
++  static constexpr char kKWalletFolder[] = "Haze Keys";
++  static constexpr char kKeyName[] = "Haze Safe Storage";
++  static constexpr char kAppName[] = "haze";
+ #endif
+ 
+   void InitializeFreedesktopSecretService();
+diff --git a/components/os_crypt/common/keychain_password_mac.mm b/components/os_crypt/common/keychain_password_mac.mm
+index 212b930..7f1edcf 100644
+--- a/components/os_crypt/common/keychain_password_mac.mm
++++ b/components/os_crypt/common/keychain_password_mac.mm
+@@ -35,8 +35,8 @@ namespace {
+ const char kDefaultServiceName[] = "Chrome Safe Storage";
+ const char kDefaultAccountName[] = "Chrome";
+ #else
+-const char kDefaultServiceName[] = "Chromium Safe Storage";
+-const char kDefaultAccountName[] = "Chromium";
++const char kDefaultServiceName[] = "Haze Safe Storage";
++const char kDefaultAccountName[] = "Haze";
+ #endif
+ 
+ // These values are persisted to logs. Entries should not be renumbered and

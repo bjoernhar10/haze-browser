@@ -2,6 +2,112 @@
 
 One entry per step: what is new, and how to test it.
 
+## Step 5 — Branding (2026-11-26)
+
+**What's new**
+
+Nine patches in `patches/core/`, one concern each:
+
+| Patch | What it covers |
+|---|---|
+| grit strings | Every UI string that says "Chromium", in all locales |
+| `BRANDING` | Product, company and copyright names; macOS bundle name and ID `org.hazebrowser.Haze` |
+| Linux identity | `~/.config/haze`, `haze.desktop`, app ID and WM class `haze`, icon name, `haze` URL scheme, package metadata |
+| System dirs | `/etc/haze/policies`, `/etc/haze/native-messaging-hosts` (macOS: `Application Support/Haze`) |
+| OS keyring | "Haze Safe Storage" in Secret Service, KWallet and the macOS Keychain |
+| macOS identity | `Application Support/Haze`, initial preferences, "Haze Apps" folder, Finder document type names |
+| Windows identity | `%LOCALAPPDATA%\Haze`, AppUserModelID, ProgIDs, policy and TriggeredReset keys, new CLSIDs, Active Setup GUID and AppContainer SID prefix |
+| `haze.exe` | Output name, version resource, installer and the code that finds the exe by name |
+| Placeholder icon | Neutral square with an "H" in every size and format, drawn by `scripts/placeholder_icon.py` |
+
+- **Strings without losing translations.** grit keys each translation by a
+  fingerprint of the English text, so editing "Chromium" in the `.grd` files
+  would orphan the translations of every string naming the product, German
+  included. Instead, one hook in grit's `MessageNode.Translate()` renames the
+  product *after* the translation is chosen. The rules live in
+  `overlay/tools/grit/haze_branding.py`: whole word "Chromium" only, so
+  "ChromiumOS" and URLs stay; the link text between `BEGIN_LINK_CHROMIUM` and
+  `END_LINK_CHROMIUM` stays, so "Haze is made possible by the **Chromium**
+  open source project" stays true in every language. German needs nothing
+  more ("Die Haze-Autoren"). Languages that inflect names keep their case
+  ending on the new stem ("Hazea"), which is understandable but not polished;
+  Haze supports English and German.
+- **Deliberately still Chromium:** the User-Agent (reduced UA, no Haze token),
+  UA-CH brands (`Chromium 158`), and the "Chromium PDF Plugin/Viewer" names in
+  `navigator.plugins`. Websites see all three, and a Haze-specific value would
+  single Haze users out. UA-CH would only pick up the product name under a
+  non-Chromium branding flag, which Haze does not set.
+- `patch.sh export` now requires a `Security:` line whenever a patch says
+  `Security-relevant: yes`, so the reason CLAUDE.md asks for is checked rather
+  than hoped for. Three of these patches carry one.
+- `test/data/smoke.html` also shows the UA-CH brands.
+
+**Verified on Linux x64** (incremental build: 2,136 edges, 10 min)
+
+| Check | Result |
+|---|---|
+| `chrome://version`, English | Haze, The Haze Authors, Copyright 2026 The Haze Authors |
+| `chrome://version`, German | "Informationen zur Version", "Die Haze-Autoren" |
+| About page, en / de | "About Haze" / "Über Haze", placeholder icon, credits link still "Chromium" |
+| Window title (Wayland `set_title`) | `Haze smoke test: ok - Haze` |
+| App ID (Wayland `set_app_id`) | `haze` |
+| KDE (asked KWin over D-Bus) | `desktopFileName=haze`, `resourceClass=haze` → `haze.desktop`, Name "Haze" |
+| Default profile dir (with `XDG_CONFIG_HOME` redirected) | `<XDG_CONFIG_HOME>/haze` |
+| User-Agent / UA-CH | no Haze token / `Not.A/Brand 24, Chromium 158` |
+| Visible "Chromium" left on version and About pages | only the credits link |
+| Shutdown | clean, no crash dump |
+
+Screenshots: `docs/screens/05/` (version and About page, English and German).
+
+**How to test**
+
+```sh
+HAZE_JOBS=5 scripts/build.sh dev chrome
+(cd build/src && python3 haze/tools/grit/haze_branding_unittest.py)
+
+# Crashpad ignores --user-data-dir and writes to the *default* data dir, so
+# redirect XDG_CONFIG_HOME too or a test run creates ~/.config/haze.
+# On Linux the UI language comes from LANGUAGE, not --lang.
+LANGUAGE=de XDG_CONFIG_HOME=$PWD/build/profiles/xdg \
+  build/src/out/Dev/chrome --user-data-dir=build/profiles/brand chrome://settings/help
+```
+
+**Platform coverage**
+
+Only Linux was built and run. macOS and Windows are patched but unbuilt:
+
+- macOS: `Assets.car` is a compiled asset catalog that only Apple's `actool`
+  produces, so it still holds Chromium's icon; `app.icns` and the
+  `Assets.xcassets` PNGs are replaced. The Dock may show Chromium's icon until
+  the catalog is rebuilt on a Mac.
+- Windows: the `haze.exe` rename covers the build, installer and every code
+  path that finds the exe by name, but has never been compiled. The COM
+  interface IIDs are unchanged on purpose (they are defined in the IDL files);
+  if a system-level install of both Haze and Chromium turns out to clash on the
+  type library registration, the IDL needs Haze's own IIDs.
+
+**Found along the way**
+
+- Crashpad keeps its database in the default user data dir regardless of
+  `--user-data-dir` (upstream, crbug.com/40447560). Earlier test runs had
+  therefore created `~/.config/chromium/Crash Reports` (step 3) and
+  `~/.config/haze/Crash Reports` (this step) in the real home. Both held only
+  crashpad's local database and were removed. The one dump in it was a
+  `DumpWithoutCrashing` from the step-3 cleanup killing the zygote and browser
+  at once, not a crash.
+- The version line reads "Developer Build, ungoogled-chromium". That is
+  ungoogled's own patch and names what Haze is built on; left as is.
+- Settings still has a "You and Google" section. Not branding; belongs with
+  removing Google services.
+
+**Open decisions**
+
+- macOS bundle ID `org.hazebrowser.Haze` (also the Linux RDN) is a
+  placeholder for a domain the project controls. Cheap to change before the
+  first release, expensive after.
+- The Linux package maintainer address is `patches@haze.invalid` until
+  packaging.
+
 ## Step 4 — Patch workflow and the first patch (2026-11-25)
 
 **What's new**

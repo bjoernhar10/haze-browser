@@ -53,12 +53,24 @@ Area: core
 - **Subject** — imperative, one line. The patch file name is derived from it.
 - **Why** — one to three sentences. What this buys, not what the diff does.
 - **Security-relevant** — `yes` or `no`, nothing else.
+- **Security** — required with `yes`: what the patch touches and why that does
+  not weaken anything. It may run over several lines, up to `Area:`.
 - **Area** — one of `core`, `privacy`, `security`, `ui`, `mac`, `win`, `linux`.
   It decides which `patches/<area>/` directory the file is written to.
 
 Touching `sandbox/`, `content/browser/renderer_host/`, `net/cert/`,
-`components/permissions/` or `third_party/blink/` needs a reason in the header
-as well.
+`components/permissions/` or `third_party/blink/` makes a patch
+security-relevant, so its reason goes in that `Security:` line.
+
+```
+Keep Haze's encryption key under its own name in the OS keyring
+
+Why: ...
+Security-relevant: yes
+Security: This only renames the keyring entry, folder and app name; how the
+key is generated, stored and used is unchanged.
+Area: core
+```
 
 ### Why export is reproducible
 
@@ -101,11 +113,32 @@ these in `build/src/.git/info/exclude`:
 
 `out/` is already covered by Chromium's own `.gitignore`.
 
+## Branding
+
+The product name in UI strings is not changed in the `.grd` files: grit keys
+translations by the English text, so that would orphan them. The
+`name-the-product-haze-in-every-string-grit-writes` patch hooks grit's
+`MessageNode.Translate()` instead, and the rules live in
+`overlay/tools/grit/haze_branding.py` (test: `haze_branding_unittest.py` next
+to it). On a rebase, only that hook can conflict, never the string files.
+
+Names websites can see (User-Agent, UA-CH brands, PDF plugin names) stay
+Chromium's on purpose: a Haze value would be a fingerprinting signal.
+
 ## Patch table
 
 | # | Patch | Area | Subject | Security-relevant |
 |---|---|---|---|---|
 | 1 | `core/build-hazes-sources-into-the-browser.patch` | core | Build Haze's sources into the browser | no |
+| 2 | `core/name-the-product-haze-in-every-string-grit-writes.patch` | core | Name the product Haze in every string grit writes | no |
+| 3 | `core/brand-the-build-as-haze-in-branding.patch` | core | Brand the build as Haze in BRANDING | no |
+| 4 | `core/give-haze-its-own-identity-on-linux.patch` | core | Give Haze its own identity on Linux | no |
+| 5 | `core/read-policies-and-native-messaging-hosts-from-hazes-own-syst.patch` | core | Read policies and native messaging hosts from Haze's own system dirs | yes |
+| 6 | `core/keep-hazes-encryption-key-under-its-own-name-in-the-os-keyri.patch` | core | Keep Haze's encryption key under its own name in the OS keyring | yes |
+| 7 | `core/give-haze-its-own-identity-on-macos.patch` | core | Give Haze its own identity on macOS | no |
+| 8 | `core/give-haze-its-own-install-identity-on-windows.patch` | core | Give Haze its own install identity on Windows | yes |
+| 9 | `core/name-the-windows-executable-haze-exe.patch` | core | Name the Windows executable haze.exe | no |
+| 10 | `core/use-a-placeholder-haze-icon-instead-of-chromiums-logo.patch` | core | Use a placeholder Haze icon instead of Chromium's logo | no |
 
 One dep line in `chrome/browser/BUILD.gn` adds `//haze` to the browser's
 `deps`, which puts `overlay/BUILD.gn`'s `group("haze")` in the build graph.

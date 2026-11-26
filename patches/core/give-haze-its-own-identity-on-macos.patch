@@ -1,0 +1,83 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Haze <patches@haze.invalid>
+Date: Thu, 26 Nov 2026 22:36:12 +0100
+Subject: [PATCH] Give Haze its own identity on macOS
+
+Why: Without this Haze would keep its profile in Application Support/Chromium,
+next to an installed Chromium, and read Chromium's initial preferences. The
+bundle name and ID already come from BRANDING; this covers the paths and the
+document type names Finder shows.
+Security-relevant: no
+Area: core
+---
+ chrome/app/app-Info.plist                                   | 4 ++--
+ chrome/browser/mac/initial_prefs.mm                         | 6 +++---
+ .../os_integration/mac/apps_folder_support.mm               | 2 +-
+ chrome/common/chrome_paths_mac.mm                           | 2 +-
+ 4 files changed, 7 insertions(+), 7 deletions(-)
+
+diff --git a/chrome/app/app-Info.plist b/chrome/app/app-Info.plist
+index 6fada0a..0aa4310 100644
+--- a/chrome/app/app-Info.plist
++++ b/chrome/app/app-Info.plist
+@@ -234,7 +234,7 @@
+ 				<string>public.content</string>
+ 			</array>
+ 			<key>UTTypeDescription</key>
+-			<string>Chromium Extension</string>
++			<string>Haze Extension</string>
+ 			<key>UTTypeIcons</key>
+ 			<dict>
+ 				<key>UTTypeIconBadgeName</key>
+@@ -262,7 +262,7 @@
+ 				<string>com.apple.web-internet-location</string>
+ 			</array>
+ 			<key>UTTypeDescription</key>
+-			<string>Chromium Shortcut</string>
++			<string>Haze Shortcut</string>
+ 			<key>UTTypeIcons</key>
+ 			<dict>
+ 				<key>UTTypeIconBadgeName</key>
+diff --git a/chrome/browser/mac/initial_prefs.mm b/chrome/browser/mac/initial_prefs.mm
+index 77e599a..e224c8c 100644
+--- a/chrome/browser/mac/initial_prefs.mm
++++ b/chrome/browser/mac/initial_prefs.mm
+@@ -28,9 +28,9 @@ const char kLegacyInitialPreferencesFileName[] =
+     "Google Chrome Master Preferences";
+ #else
+ const NSSearchPathDirectory kSearchPath = NSApplicationSupportDirectory;
+-const char kInitialPreferencesDirectory[] = "Chromium";
+-const char kInitialPreferencesFileName[] = "Chromium Initial Preferences";
+-const char kLegacyInitialPreferencesFileName[] = "Chromium Master Preferences";
++const char kInitialPreferencesDirectory[] = "Haze";
++const char kInitialPreferencesFileName[] = "Haze Initial Preferences";
++const char kLegacyInitialPreferencesFileName[] = "Haze Master Preferences";
+ #endif  // BUILDFLAG(GOOGLE_CHROME_BRANDING)
+ 
+ }  // namespace
+diff --git a/chrome/browser/web_applications/os_integration/mac/apps_folder_support.mm b/chrome/browser/web_applications/os_integration/mac/apps_folder_support.mm
+index d8cb9f6..00205e7 100644
+--- a/chrome/browser/web_applications/os_integration/mac/apps_folder_support.mm
++++ b/chrome/browser/web_applications/os_integration/mac/apps_folder_support.mm
+@@ -38,7 +38,7 @@ namespace {
+ std::atomic<bool> g_have_localized_app_dir_name{false};
+ 
+ base::FilePath GetLocalizableAppShortcutsSubdirName() {
+-  static const char kChromiumAppDirName[] = "Chromium Apps.localized";
++  static const char kChromiumAppDirName[] = "Haze Apps.localized";
+   static const char kChromeAppDirName[] = "Chrome Apps.localized";
+   static const char kChromeCanaryAppDirName[] = "Chrome Canary Apps.localized";
+ 
+diff --git a/chrome/common/chrome_paths_mac.mm b/chrome/common/chrome_paths_mac.mm
+index 6829c9c..df4a21e 100644
+--- a/chrome/common/chrome_paths_mac.mm
++++ b/chrome/common/chrome_paths_mac.mm
+@@ -37,7 +37,7 @@ char* ProductDirNameForBundle(NSBundle* chrome_bundle) {
+ #elif BUILDFLAG(GOOGLE_CHROME_BRANDING)
+       product_dir_name = "Google/Chrome";
+ #else
+-      product_dir_name = "Chromium";
++      product_dir_name = "Haze";
+ #endif
+     }
+ 

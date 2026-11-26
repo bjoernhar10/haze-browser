@@ -1,0 +1,121 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Haze <patches@haze.invalid>
+Date: Thu, 26 Nov 2026 22:34:46 +0100
+Subject: [PATCH] Give Haze its own identity on Linux
+
+Why: With Chromium's names, Haze would open ~/.config/chromium, register as
+chromium-browser.desktop and group its windows with an installed Chromium.
+Using "haze" for the profile dir, desktop file, icon, URL scheme and package
+metadata keeps them apart; app ID and WM class follow the desktop file name.
+Security-relevant: no
+Area: core
+---
+ chrome/browser/shell_integration_linux.cc           |  4 +-
+ chrome/common/channel_info_posix.cc                 |  2 +-
+ chrome/common/chrome_paths_linux.cc                 |  2 +-
+ chrome/installer/linux/common/chromium-browser.info | 26 +++++-----
+ 4 files changed, 17 insertions(+), 17 deletions(-)
+
+diff --git a/chrome/browser/shell_integration_linux.cc b/chrome/browser/shell_integration_linux.cc
+index 1a0f12a..4736589 100644
+--- a/chrome/browser/shell_integration_linux.cc
++++ b/chrome/browser/shell_integration_linux.cc
+@@ -581,7 +581,7 @@ std::string GetIconName() {
+ #if BUILDFLAG(GOOGLE_CHROME_BRANDING)
+   return "google-chrome";
+ #else  // BUILDFLAG(CHROMIUM_BRANDING)
+-  return "chromium-browser";
++  return "haze";
+ #endif
+ }
+ 
+@@ -1040,7 +1040,7 @@ std::string GetDirectLaunchUrlScheme() {
+       return "google-chrome";
+   }
+ #else
+-  return "chromium";
++  return "haze";
+ #endif
+ }
+ 
+diff --git a/chrome/common/channel_info_posix.cc b/chrome/common/channel_info_posix.cc
+index f6bcb3c..3f81cbc 100644
+--- a/chrome/common/channel_info_posix.cc
++++ b/chrome/common/channel_info_posix.cc
+@@ -148,7 +148,7 @@ std::string GetDesktopName(base::Environment* env) {
+   if (name.has_value() && !name.value().empty()) {
+     return name.value();
+   }
+-  return "chromium-browser.desktop";
++  return "haze.desktop";
+ #endif
+ }
+ #endif  // BUILDFLAG(IS_LINUX)
+diff --git a/chrome/common/chrome_paths_linux.cc b/chrome/common/chrome_paths_linux.cc
+index 5575c04..3ccd96e 100644
+--- a/chrome/common/chrome_paths_linux.cc
++++ b/chrome/common/chrome_paths_linux.cc
+@@ -95,7 +95,7 @@ bool GetDefaultUserDataDirectory(base::FilePath* result) {
+ #elif BUILDFLAG(GOOGLE_CHROME_BRANDING)
+   std::string data_dir_basename = "google-chrome";
+ #else
+-  std::string data_dir_basename = "chromium";
++  std::string data_dir_basename = "haze";
+ #endif
+   *result = config_dir.Append(data_dir_basename + GetChannelSuffixForDataDir());
+   return true;
+diff --git a/chrome/installer/linux/common/chromium-browser.info b/chrome/installer/linux/common/chromium-browser.info
+index 395c019..ab864ef 100644
+--- a/chrome/installer/linux/common/chromium-browser.info
++++ b/chrome/installer/linux/common/chromium-browser.info
+@@ -6,37 +6,37 @@
+ # chromium-browser packages for various platforms.
+ 
+ # Base name of the package.
+-PACKAGE="chromium-browser"
++PACKAGE="haze"
+ 
+ # Filename of the main executable (for generating launcher scripts, etc.)
+ PROGNAME=chrome
+ 
+ # Base directory for package installation.
+-INSTALLDIR=/opt/chromium.org/chromium
++INSTALLDIR=/opt/haze
+ 
+ # Directory for device policy enrollments.
+-ENROLLMENTDIR=/etc/chromium/policies/enrollment
++ENROLLMENTDIR=/etc/haze/policies/enrollment
+ 
+ # Display string for desktop menu/icon.
+-MENUNAME="Chromium Web Browser"
++MENUNAME="Haze"
+ 
+ # Brief package description.
+-SHORTDESC="The web browser from the Chromium projects"
++SHORTDESC="Web browser built on Chromium"
+ 
+ # Detailed package description.
+-FULLDESC="Chromium is a browser that combines a minimal design with sophisticated technology to make the web faster, safer, and easier."
++FULLDESC="Haze is a web browser built on Chromium, with a focus on privacy, security and performance."
+ 
+ # Package maintainer information.
+-MAINTNAME="Chromium Linux Team"
+-MAINTMAIL="chromium-packagers@chromium.org"
+-PRODUCTURL="https://www.chromium.org/Home"
++MAINTNAME="The Haze Authors"
++MAINTMAIL="patches@haze.invalid"
++PRODUCTURL="https://github.com/bjoernhar10/haze-browser"
+ 
+ PROJECT_LICENSE="BSD-3-Clause and LGPL-2.1+ and Apache-2.0 and IJG and MIT and GPL-2.0+ and ISC and OpenSSL and (MPL-1.1 or GPL-2.0 or LGPL-2.0)"
+ 
+-DEVELOPER_NAME="The Chromium Authors"
++DEVELOPER_NAME="The Haze Authors"
+ 
+-BUGTRACKERURL="https://www.chromium.org/for-testers/bug-reporting-guidelines"
++BUGTRACKERURL="https://github.com/bjoernhar10/haze-browser/issues"
+ 
+-HELPURL="https://chromium.googlesource.com/chromium/src/+/main/docs/linux/debugging.md"
++HELPURL="https://github.com/bjoernhar10/haze-browser"
+ 
+-RDN="org.chromium.Chromium"
++RDN="org.hazebrowser.Haze"

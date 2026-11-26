@@ -1,1 +1,10 @@
 core/build-hazes-sources-into-the-browser.patch
+core/name-the-product-haze-in-every-string-grit-writes.patch
+core/brand-the-build-as-haze-in-branding.patch
+core/give-haze-its-own-identity-on-linux.patch
+core/read-policies-and-native-messaging-hosts-from-hazes-own-syst.patch
+core/keep-hazes-encryption-key-under-its-own-name-in-the-os-keyri.patch
+core/give-haze-its-own-identity-on-macos.patch
+core/give-haze-its-own-install-identity-on-windows.patch
+core/name-the-windows-executable-haze-exe.patch
+core/use-a-placeholder-haze-icon-instead-of-chromiums-logo.patch

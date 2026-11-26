@@ -1,0 +1,39 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Haze <patches@haze.invalid>
+Date: Thu, 26 Nov 2026 22:34:16 +0100
+Subject: [PATCH] Brand the build as Haze in BRANDING
+
+Why: BRANDING feeds the product, company and copyright names into version
+resources, the About page, chrome://version and the macOS bundle name and ID,
+so one file covers what no string table does. The bundle ID differs from
+org.chromium.Chromium so macOS keeps Haze's prefs and permissions apart.
+Security-relevant: no
+Area: core
+---
+ chrome/app/theme/chromium/BRANDING | 18 +++++-----
+ 1 file changed, 9 insertions(+), 9 deletions(-)
+
+diff --git a/chrome/app/theme/chromium/BRANDING b/chrome/app/theme/chromium/BRANDING
+index f8363d5..a914247 100644
+--- a/chrome/app/theme/chromium/BRANDING
++++ b/chrome/app/theme/chromium/BRANDING
+@@ -1,10 +1,10 @@
+-COMPANY_FULLNAME=The Chromium Authors
+-COMPANY_SHORTNAME=The Chromium Authors
+-PRODUCT_FULLNAME=Chromium
+-PRODUCT_SHORTNAME=Chromium
+-PRODUCT_INSTALLER_FULLNAME=Chromium Installer
+-PRODUCT_INSTALLER_SHORTNAME=Chromium Installer
+-COPYRIGHT=Copyright @LASTCHANGE_YEAR@ The Chromium Authors. All rights reserved.
+-MAC_BUNDLE_ID=org.chromium.Chromium
+-MAC_CREATOR_CODE=Cr24
++COMPANY_FULLNAME=The Haze Authors
++COMPANY_SHORTNAME=The Haze Authors
++PRODUCT_FULLNAME=Haze
++PRODUCT_SHORTNAME=Haze
++PRODUCT_INSTALLER_FULLNAME=Haze Installer
++PRODUCT_INSTALLER_SHORTNAME=Haze Installer
++COPYRIGHT=Copyright @LASTCHANGE_YEAR@ The Haze Authors. All rights reserved.
++MAC_BUNDLE_ID=org.hazebrowser.Haze
++MAC_CREATOR_CODE=Haze
+ MAC_TEAM_ID=

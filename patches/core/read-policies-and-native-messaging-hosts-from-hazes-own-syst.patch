@@ -1,0 +1,55 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Haze <patches@haze.invalid>
+Date: Thu, 26 Nov 2026 22:35:17 +0100
+Subject: [PATCH] Read policies and native messaging hosts from Haze's own
+ system dirs
+
+Why: Policies an admin set in /etc/chromium/policies would otherwise also
+configure Haze, and system-wide native messaging hosts registered for Chromium
+would be offered to it. Haze reads /etc/haze/ on Linux and
+/Library/Application Support/Haze/ on macOS instead.
+Security-relevant: yes
+Security: Enterprise policy can turn security features on or off,
+so Haze must only apply policy written for Haze. Nothing about how policy is
+parsed or enforced changes.
+Area: core
+---
+ chrome/common/chrome_paths.cc                 | 4 ++--
+ components/policy/core/common/policy_paths.cc | 2 +-
+ 2 files changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/chrome/common/chrome_paths.cc b/chrome/common/chrome_paths.cc
+index 4448f86..9dec780 100644
+--- a/chrome/common/chrome_paths.cc
++++ b/chrome/common/chrome_paths.cc
+@@ -466,7 +466,7 @@ bool PathProvider(int key, base::FilePath* result) {
+           "/Library/Google/ChromeForTesting/NativeMessagingHosts"));
+ #else
+       cur = base::FilePath(FILE_PATH_LITERAL(
+-          "/Library/Application Support/Chromium/NativeMessagingHosts"));
++          "/Library/Application Support/Haze/NativeMessagingHosts"));
+ #endif
+ #else  // BUILDFLAG(IS_MAC)
+ #if BUILDFLAG(GOOGLE_CHROME_BRANDING)
+@@ -477,7 +477,7 @@ bool PathProvider(int key, base::FilePath* result) {
+           "/etc/opt/chrome_for_testing/native-messaging-hosts"));
+ #else
+       cur = base::FilePath(
+-          FILE_PATH_LITERAL("/etc/chromium/native-messaging-hosts"));
++          FILE_PATH_LITERAL("/etc/haze/native-messaging-hosts"));
+ #endif
+ #endif  // !BUILDFLAG(IS_MAC)
+       break;
+diff --git a/components/policy/core/common/policy_paths.cc b/components/policy/core/common/policy_paths.cc
+index 7c15eea..bf6ec14 100644
+--- a/components/policy/core/common/policy_paths.cc
++++ b/components/policy/core/common/policy_paths.cc
+@@ -18,7 +18,7 @@ const char kPolicyPath[] = "/etc/opt/chrome/policies";
+ #elif BUILDFLAG(GOOGLE_CHROME_FOR_TESTING_BRANDING)
+ const char kPolicyPath[] = "/etc/opt/chrome_for_testing/policies";
+ #else
+-const char kPolicyPath[] = "/etc/chromium/policies";
++const char kPolicyPath[] = "/etc/haze/policies";
+ #endif  // BUILDFLAG(GOOGLE_CHROME_BRANDING)
+ #endif  // BUILDFLAG(IS_POSIX) && !BUILDFLAG(IS_MAC)
+ 
