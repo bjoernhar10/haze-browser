@@ -27,8 +27,8 @@ One entry per step: what is new, and how to test it.
   makes it usable at the end of every step. It is stricter than `apply`, with no
   3-way fallback.
 - `build/src/.git/info/exclude` now covers `/haze/` (a copy of `overlay/`, which
-  is the source of truth) and the three host-tool link paths, so generated files
-  can never leak into an exported patch.
+  is the source of truth) and every path `build.sh` fetches pruned tools into,
+  so generated files can never leak into an exported patch.
 - `prepare.sh` sets the `build/src` identity to `Haze <patches@haze.invalid>`.
   That identity ends up in every patch's `From:` line, so it has to be identical
   on every machine or `export` would diff elsewhere.
@@ -45,7 +45,7 @@ scripts/patch.sh apply     # baseline + series -> one commit per patch
 scripts/patch.sh export    # and again: patches/ must not change
 
 # the hook really is in the graph:
-build/src/out/gn_build/gn path build/src/out/Dev //chrome/browser:browser //haze
+cd build/src && buildtools/linux64/gn path out/Dev //chrome/browser:browser //haze
 ```
 
 **Verified**
@@ -59,12 +59,22 @@ build/src/out/gn_build/gn path build/src/out/Dev //chrome/browser:browser //haze
 | `export` without `Why:` / bad `Security-relevant:` / unknown `Area:` | exit 1 each, `patches/` untouched |
 | `gn gen` with the hook | 37,077 targets, `//chrome/browser:browser --> //haze:haze` |
 
-**Not verified yet**
+| `chrome` built and launched with the patch applied (step 3) | links, starts, renders |
+| `export` / `check` against the built tree (2026-11-26) | no diff / clean |
 
-The patch is verified by `gn gen`, not by a compile: an empty group has nothing
-to compile. The first full `chrome` build is still pending (see step 3).
+An empty group has nothing to compile, so the link only proves the hook does
+not break the build; the first Haze sources will prove it carries code.
 
-## Step 3 — GN configs and the build script (2026-11-25, incomplete)
+**Haze tests**
+
+None yet: `haze_unittests` arrives with the first real Haze code.
+
+**Platform coverage**
+
+Linux x64 only. `patch.sh` is plain bash and git, so it should run unchanged on
+macOS; Windows needs Git Bash or a PowerShell port.
+
+## Step 3 — GN configs and the build script (2026-11-25 – 26)
 
 **What's new**
 
@@ -95,39 +105,84 @@ to compile. The first full `chrome` build is still pending (see step 3).
 - Resolved values confirm release keeps `is_cfi = true` and
   `use_thin_lto = true`, so the config does not weaken upstream hardening.
 - `scripts/build.sh dev|release [targets]` syncs `overlay/` to
-  `build/src/haze/` with `rsync --delete`, ensures the toolchain, builds `gn`,
-  writes `args.gn`, runs `gn gen` and then ninja, logging to
-  `build/logs/build-<config>-<timestamp>.log`.
-- Four pruned host tools had to be linked into the paths the build expects:
-  `python3` (`.gn` sets `script_executable` to `third_party/cpython3`, so
-  `gn gen` fails with exit 127 without it), `node`, `gperf` and `tsc` (pointed
-  at the in-tree `devtools-frontend/node_modules/typescript`, so no global npm
-  install is needed).
-- `gn` is built by calling GN's own `tools/gn/build/gen.py` with
-  `--no-static-libstdc++` rather than `tools/gn/bootstrap/bootstrap.py`, which
-  does not forward that flag. GN links the tool with `-static-libstdc++` on
-  Linux, which needs `libstdc++.a`, a separate package on Fedora and others.
-  Static linking only matters for shipping the binary around.
+  `build/src/haze/` with `rsync --delete`, ensures the toolchain and the pruned
+  tools, writes `args.gn`, runs `gn gen` and then ninja, logging to
+  `build/logs/build-<config>-<timestamp>.log`. `HAZE_JOBS` overrides the job
+  count.
 
-**Host prerequisites found the hard way**
+**Pruned tools are fetched from DEPS, not linked from the host**
 
-`ninja-build`, `gperf` and `clang-tools-extra` are needed on Fedora and are not
-in the tarball. ungoogled prunes the prebuilt `gn`, `ninja`, `cpython3`, `node`,
-`gperf`, `tsc` and `clang-format`.
+ungoogled prunes prebuilt binaries, but the build still runs them from fixed
+paths. Linking host copies looked simpler and failed twice: `tsc` needs its
+whole package (it reads `lib.*.d.ts` beside itself), and
+`third_party/node:check_version` asserts the exact pinned node version.
+`scripts/deps_tool.py` reads the entry out of the tree's own `DEPS` (resolving
+`Var()`), so a rebase picks up new versions with no change to Haze:
 
-**What is NOT done**
+| Tool | Source | Found by |
+|---|---|---|
+| `gn` | cipd `gn/gn/linux-amd64`, into `buildtools/linux64/` | V8's metagen runs `gn desc` and looks only there |
+| `clang-format` | gcs, sha256-checked | Crubit; `enable_cpp_api_from_rust` is not settable |
+| `libclang` | gcs, sha256-checked, per host OS | V8 metagen |
+| `node` | gcs, sha256-checked | devtools-frontend, version-asserted |
+| `esbuild`, TypeScript | cipd | devtools-frontend |
+| Go | cipd, from Dawn's `DEPS` | Dawn runs `go run` inside an action script |
 
-No `chrome` binary yet, so there is **no build time, no launch with a fresh
-profile in `build/profiles/` and no page load**. The build stops in a Crubit
-step that needs `clang-format` at `buildtools/linux64-format/clang-format`;
-`enable_cpp_api_from_rust` is computed from `enable_rust && build_with_chromium`
-and is not a settable gn arg, so Crubit cannot simply be turned off. Install
-`clang-tools-extra`, then `scripts/build.sh dev chrome`.
+Only `python3` and `gperf` are still linked from the host. gcs downloads are
+checked against the sha256 in DEPS; cipd ones come from the
+`chrome-infra-packages.appspot.com` HTTPS endpoint, which DEPS pins by version
+but not by hash.
+
+`ninja -t inputs` cannot prove this list complete: a tool spawned inside an
+action script (Dawn's `go`) is not a declared input. The build finishing is the
+proof.
+
+**Measured on Linux x64** (i7-1185G7, 4 cores / 8 threads, 15 GiB RAM, NVMe)
+
+| | |
+|---|---|
+| `chrome` edges | 56,852 |
+| Ninja time, all runs | **14 h 21 min** (five runs: three stopped on a missing tool, one on low memory; ninja resumes) |
+| Last run | 10 h 39 min for 31,156 edges at `-j 5` |
+| `out/Dev` | 6.6 GB, 554 shared libraries |
+| `chrome` binary | 190 MB |
+
+A clean run would land near the sum: every stopped run kept its objects. One
+run was killed when the machine ran low on memory at `-j 8`; Blink's bindings
+generators push 8 parallel jobs past 15 GiB. `HAZE_JOBS=5` finished without
+trouble.
+
+**Launch check**
+
+- Headless, fresh profile in `build/profiles/step3-smoke`, loading
+  `test/data/smoke.html` over `file://`: the page script ran and set the title
+  to `Haze smoke test: ok`. Screenshot: `docs/screens/03/smoke.png`.
+- Windowed under Wayland, fresh profile in `build/profiles/step3-window`: browser,
+  GPU, zygote, utility and four renderer processes started, the toplevel window
+  was mapped, and it shut down cleanly. A KWin screenshot of it comes out black
+  without a portal grant, so the rendered page above is the visual record.
+- The smoke page is local on purpose. A fresh profile must make zero requests,
+  so the test makes none either. Whether the browser itself stays quiet is
+  `scripts/netcheck.sh`'s job from step 8.
+
+**How to test**
+
+```sh
+HAZE_JOBS=5 scripts/build.sh dev chrome     # resumes where ninja stopped
+
+build/src/out/Dev/chrome --headless=new --no-first-run \
+  --user-data-dir=build/profiles/smoke \
+  --dump-dom "file://$PWD/test/data/smoke.html" | grep '<title>'
+# -> <title>Haze smoke test: ok</title>
+```
 
 **Platform coverage**
 
-Linux x64 only. `build.sh` is bash, and its host-tool links are Linux paths;
-macOS and Windows need their own handling.
+Linux x64 only. `build.sh` is bash; the toolchain steps and the cipd/gcs
+selection already pick per host OS, but nothing has run on macOS, and Windows
+needs `scripts/build.ps1`, which does not exist yet. `out/Release` has not been
+built: an official ThinLTO/CFI build is far heavier than dev and is not
+practical on this machine.
 
 ## Step 2 — Chromium source and the baseline commit (2026-11-25)
 
