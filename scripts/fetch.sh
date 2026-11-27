@@ -17,7 +17,8 @@
 HAZE_SCRIPT_NAME="fetch.sh"
 
 main() {
-  haze_require_cmd python3 curl tar
+  haze_require_python
+  haze_require_cmd curl tar
   haze_require_dir "${HAZE_UG_UTILS}"
   haze_assert_version_match
   haze_drop_stale_stamps
@@ -50,7 +51,7 @@ download() {
   mkdir -p "${HAZE_DOWNLOAD_DIR}"
 
   if [ -t 2 ]; then
-    haze_run "${HAZE_UG_UTILS}/downloads.py" retrieve \
+    haze_run "${HAZE_PYTHON}" "${HAZE_UG_UTILS}/downloads.py" retrieve \
       -i "${HAZE_UNGOOGLED_DIR}/downloads.ini" \
       -c "${HAZE_DOWNLOAD_DIR}"
   else
@@ -59,7 +60,7 @@ download() {
     # prints its meter regardless, which floods a redirected log with
     # thousands of \r-separated updates. sed (not grep -v, which returns 1
     # when it drops everything and would trip pipefail) strips the meter.
-    haze_run "${HAZE_UG_UTILS}/downloads.py" retrieve \
+    haze_run "${HAZE_PYTHON}" "${HAZE_UG_UTILS}/downloads.py" retrieve \
       -i "${HAZE_UNGOOGLED_DIR}/downloads.ini" \
       -c "${HAZE_DOWNLOAD_DIR}" 2>&1 \
       | tr '\r' '\n' \
@@ -90,7 +91,7 @@ extract() {
 
   haze_step "extracting to build/src"
   mkdir -p "${HAZE_SRC_DIR}"
-  haze_run "${HAZE_UG_UTILS}/downloads.py" unpack \
+  haze_run "${HAZE_PYTHON}" "${HAZE_UG_UTILS}/downloads.py" unpack \
     -i "${HAZE_UNGOOGLED_DIR}/downloads.ini" \
     -c "${HAZE_DOWNLOAD_DIR}" \
     -- "${HAZE_SRC_DIR}"

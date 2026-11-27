@@ -1,0 +1,13 @@
+# Paths in build/src that git must ignore, beyond Chromium's own .gitignore
+# files. scripts/lib.sh and scripts/build.ps1 both append these to
+# build/src/.git/info/exclude, so a generated file can never end up in an
+# exported patch. One path per line, in .gitignore syntax.
+
+# A copy of overlay/, which is the source of truth.
+/haze/
+# Tools the build scripts fetch from DEPS or link from the host.
+/third_party/cpython3/
+/third_party/node/linux/
+/third_party/gperf/cipd/
+/third_party/typescript/
+/buildtools/

@@ -18,6 +18,8 @@ Usage:
       -> "bucket object_name sha256 output_file"
   deps_tool.py <DEPS> cipd <entry>
       -> "package version"
+  deps_tool.py <DEPS> hook <name>
+      -> "bucket sha1_file"   (a download_from_google_storage hook)
 
 A gcs entry may list one object per host, each with its own condition, so the
 matching one is picked by host_os ("linux", "mac", "win"; default linux) and
@@ -52,23 +54,32 @@ def read_vars(deps):
 
 
 def field(body, name, default=None, variables=None):
-    """Read one quoted field, resolving a Var('name') indirection."""
-    found = re.search(r"'%s':\s*'([^']+)'" % name, body)
-    if found:
-        return found.group(1)
+    """Read one field: a quoted string, a Var('name'), or a `+` of those, e.g.
+      'version': Var('dawn_go_version'),
+      'package': Var('ninja_package') + '${{platform}}',
+    Anything else stops with an error rather than returning half a value.
+    """
+    found = re.search(r"'%s':\s*(.+?),?\s*$" % name, body, re.M)
+    if not found:
+        if default is not None:
+            return default
+        sys.exit('deps_tool.py: entry has no %s' % name)
 
-    # Entries may reference a variable instead of spelling the value out, e.g.
-    #   'version': Var('dawn_go_version'),
-    ref = re.search(r"'%s':\s*Var\('([A-Za-z0-9_]+)'\)" % name, body)
-    if ref and variables is not None:
-        value = variables.get(ref.group(1))
-        if value is None:
-            sys.exit('deps_tool.py: DEPS has no var %s' % ref.group(1))
-        return value
-
-    if default is not None:
-        return default
-    sys.exit('deps_tool.py: entry has no %s' % name)
+    expr = found.group(1)
+    terms = [t.strip() for t in expr.split('+')]
+    value = ''
+    for term in terms:
+        literal = re.fullmatch(r"'([^']*)'", term)
+        var = re.fullmatch(r"Var\('([A-Za-z0-9_]+)'\)", term)
+        if literal:
+            value += literal.group(1)
+        elif var and variables is not None:
+            if var.group(1) not in variables:
+                sys.exit('deps_tool.py: DEPS has no var %s' % var.group(1))
+            value += variables[var.group(1)]
+        else:
+            sys.exit('deps_tool.py: cannot evaluate %s: %s' % (name, expr))
+    return value
 
 
 def _matches_host(condition, host_os, host_cpu):
@@ -107,6 +118,27 @@ def gcs(body, host_os, host_cpu):
     ]
 
 
+def hook(deps_path, name):
+    """Bucket and .sha1 file of a download_from_google_storage hook.
+
+    Some Windows tools, rc.exe among them, are not deps but hooks that fetch a
+    blob named by the SHA-1 in a file checked into the tree.
+    """
+    with open(deps_path, encoding='utf-8') as deps_file:
+        deps = deps_file.read()
+    block = re.search(r"'name':\s*'%s',(.*?)\n  \}," % re.escape(name), deps, re.S)
+    if not block:
+        sys.exit('deps_tool.py: no %s hook in %s' % (name, deps_path))
+    body = block.group(1)
+    if 'download_from_google_storage' not in body:
+        sys.exit('deps_tool.py: hook %s does not download from storage' % name)
+    bucket = re.search(r"'--bucket',\s*'([^']+)'", body)
+    sha1_file = re.search(r"'-s',\s*'([^']+)'", body)
+    if not bucket or not sha1_file:
+        sys.exit('deps_tool.py: hook %s has no --bucket or -s' % name)
+    return [bucket.group(1), sha1_file.group(1)]
+
+
 def cipd(body, variables):
     return [
         field(body, 'package', variables=variables),
@@ -115,9 +147,12 @@ def cipd(body, variables):
 
 
 def main(argv):
-    if len(argv) < 4 or argv[2] not in ('gcs', 'cipd'):
-        sys.exit('usage: deps_tool.py <DEPS> gcs|cipd <entry> '
+    if len(argv) < 4 or argv[2] not in ('gcs', 'cipd', 'hook'):
+        sys.exit('usage: deps_tool.py <DEPS> gcs|cipd|hook <entry> '
                  '[host_os [host_cpu]]')
+    if argv[2] == 'hook':
+        print(' '.join(hook(argv[1], argv[3])))
+        return
     body, variables = read_entry(argv[1], argv[3])
     if argv[2] == 'gcs':
         values = gcs(body, argv[4] if len(argv) > 4 else 'linux',

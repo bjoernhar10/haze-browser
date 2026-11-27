@@ -95,6 +95,7 @@ cmd_apply() {
     haze_die "commit them, or run: git -C build/src reset --hard"
   fi
 
+  haze_src_git_settings
   haze_step "resetting build/src to the baseline"
   haze_run src_git reset --hard --quiet baseline
 
@@ -108,7 +109,11 @@ cmd_apply() {
     abs="${HAZE_PATCHES_DIR}/${rel}"
     haze_require_file "${abs}"
     haze_info "applying ${rel}"
-    if ! src_git am --quiet "${abs}"; then
+    # git am strips the CR from CRLF lines by default, so a patch to one of the
+    # baseline's CRLF files would fail here while `check` (git apply) passes.
+    # *.patch is -text in .gitattributes, so the file holds exactly the bytes
+    # format-patch wrote and keeping every CR is right.
+    if ! src_git am --quiet --keep-cr --quoted-cr=nowarn "${abs}"; then
       src_git am --abort >/dev/null 2>&1 || true
       haze_die "patch does not apply: ${rel}"
     fi
@@ -238,6 +243,7 @@ cmd_check() {
   # shellcheck disable=SC2064
   trap "cd '${HAZE_ROOT}'; git -C '${HAZE_SRC_DIR}' worktree remove --force '${wt}' >/dev/null 2>&1 || true" EXIT
 
+  haze_src_git_settings
   haze_step "checking patches/series against a clean baseline"
   src_git worktree add --no-checkout --detach --quiet "${wt}" baseline
   git -C "${wt}" read-tree baseline

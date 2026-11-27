@@ -23,7 +23,8 @@
 HAZE_SCRIPT_NAME="prepare.sh"
 
 main() {
-  haze_require_cmd python3 git patch
+  haze_require_python
+  haze_require_cmd git patch
   haze_require_dir "${HAZE_UG_UTILS}"
   haze_assert_version_match
   haze_drop_stale_stamps
@@ -55,7 +56,7 @@ prune() {
     return 0
   fi
   haze_step "pruning bundled binaries"
-  haze_run "${HAZE_UG_UTILS}/prune_binaries.py" \
+  haze_run "${HAZE_PYTHON}" "${HAZE_UG_UTILS}/prune_binaries.py" \
     "${HAZE_SRC_DIR}" \
     "${HAZE_UNGOOGLED_DIR}/pruning.list"
   haze_stamp_mark prune
@@ -67,7 +68,7 @@ apply_ungoogled_patches() {
     return 0
   fi
   haze_step "applying ungoogled-chromium patches"
-  haze_run "${HAZE_UG_UTILS}/patches.py" apply \
+  haze_run "${HAZE_PYTHON}" "${HAZE_UG_UTILS}/patches.py" apply \
     "${HAZE_SRC_DIR}" \
     "${HAZE_UNGOOGLED_DIR}/patches"
   haze_stamp_mark patches
@@ -84,7 +85,7 @@ substitute_domains() {
   if [ -e "${HAZE_DOMSUB_CACHE}" ]; then
     haze_die "${HAZE_DOMSUB_CACHE} exists but the domsub stamp does not; remove the cache to redo substitution"
   fi
-  haze_run "${HAZE_UG_UTILS}/domain_substitution.py" apply \
+  haze_run "${HAZE_PYTHON}" "${HAZE_UG_UTILS}/domain_substitution.py" apply \
     -r "${HAZE_UNGOOGLED_DIR}/domain_regex.list" \
     -f "${HAZE_UNGOOGLED_DIR}/domain_substitution.list" \
     -c "${HAZE_DOMSUB_CACHE}" \
@@ -125,7 +126,7 @@ baseline() {
   # Chromium is ~400k files: keep git from garbage-collecting mid-patch and use
   # the index features that make status on a tree this size bearable.
   git -C "${HAZE_SRC_DIR}" config gc.auto 0
-  git -C "${HAZE_SRC_DIR}" config core.autocrlf false
+  haze_src_git_settings
   git -C "${HAZE_SRC_DIR}" config core.untrackedCache true
   git -C "${HAZE_SRC_DIR}" config index.version 4
 

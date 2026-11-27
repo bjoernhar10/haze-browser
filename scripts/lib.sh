@@ -141,16 +141,31 @@ haze_require_cmd() {
 # metagen, among others), which fails at import time on older interpreters.
 # macOS's /usr/bin/python3 from Xcode is 3.9, so check early instead of hours
 # into a build.
+#
+# Sets HAZE_PYTHON. Windows installs from python.org have python.exe but no
+# python3.exe, and "python3" in Git Bash is then the Microsoft Store stub in
+# WindowsApps, which opens the Store instead of running anything.
+HAZE_PYTHON=''
 haze_require_python() {
-  haze_require_cmd python3
-  python3 -I -c 'import sys; sys.exit(sys.version_info < (3, 10))' \
-    || haze_die "python3 is $(python3 -I -c 'import platform; print(platform.python_version())'); 3.10 or newer is required (macOS: brew install python)"
+  [ -z "${HAZE_PYTHON}" ] || return 0
+  local candidate path
+  for candidate in python3 python; do
+    path=$(command -v "${candidate}" 2>/dev/null) || continue
+    case "${path}" in *WindowsApps*) continue ;; esac
+    if "${path}" -I -c 'import sys; sys.exit(sys.version_info < (3, 10))' 2>/dev/null; then
+      HAZE_PYTHON="${path}"
+      return 0
+    fi
+    haze_warn "${path} is Python $("${path}" -I -c 'import platform; print(platform.python_version())' 2>/dev/null || printf '?'); need 3.10+"
+  done
+  haze_die "no Python 3.10 or newer found (macOS: brew install python; Windows: python.org installer, 'Add to PATH')"
 }
 
 # sha256sum is GNU-only and macOS's shasum needs Perl; python3 is required on
 # every platform anyway, so one code path serves all. Non-zero on mismatch.
 haze_sha256_ok() {
-  python3 -I -c 'import hashlib, sys
+  haze_require_python
+  "${HAZE_PYTHON}" -I -c 'import hashlib, sys
 digest = hashlib.sha256()
 with open(sys.argv[1], "rb") as f:
     for chunk in iter(lambda: f.read(1 << 20), b""):
@@ -311,16 +326,30 @@ haze_disk_usage() {
 # invisible to git there or it would leak into exported patches. overlay/ is the
 # source of truth for build/src/haze/, and the toolchain links are host paths.
 # .git/info/exclude is local to that tree and is not part of any commit.
+# build/src must check out to the same bytes on every platform, or a patch made
+# on one would not apply on another. 7,481 baseline files carry a text
+# attribute without an eol, so core.eol (native, i.e. CRLF on Windows) would
+# decide their line endings; pin it to LF. autocrlf would convert the rest.
+# Chromium's paths stay under MAX_PATH from a short checkout, but generated
+# files in out/ need not, hence longpaths on Windows.
+haze_src_git_settings() {
+  git -C "${HAZE_SRC_DIR}" config core.autocrlf false
+  git -C "${HAZE_SRC_DIR}" config core.eol lf
+  if [ "$(haze_platform)" = win ]; then
+    git -C "${HAZE_SRC_DIR}" config core.longpaths true
+  fi
+}
+
 haze_exclude_generated() {
   [ -d "${HAZE_SRC_DIR}/.git" ] || return 0
   local exclude="${HAZE_SRC_DIR}/.git/info/exclude"
   mkdir -p "${HAZE_SRC_DIR}/.git/info"
   local path
-  for path in '/haze/' '/third_party/cpython3/' '/third_party/node/linux/' \
-      '/third_party/gperf/cipd/' '/third_party/typescript/' '/buildtools/'; do
+  while IFS= read -r path; do
+    case "${path}" in '' | '#'*) continue ;; esac
     if ! grep -qxF "${path}" "${exclude}" 2>/dev/null; then
       printf '%s\n' "${path}" >> "${exclude}"
       haze_debug "excluded from build/src git: ${path}"
     fi
-  done
+  done < "${HAZE_SCRIPTS_DIR}/src_git_exclude"
 }

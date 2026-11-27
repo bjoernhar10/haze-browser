@@ -2,6 +2,133 @@
 
 One entry per step: what is new, and how to test it.
 
+## Step 7 — Windows (2026-11-27, incomplete: the Windows run is still to do)
+
+Worked on from the Linux machine, which has no access to Windows. What can be
+prepared and checked without it is done; building, launching and the in-app
+checks are listed below.
+
+**What Chromium M158 needs on Windows**
+
+- **Visual Studio 2026 (18.x)** with "Desktop development with C++" and
+  "C++ ATL/MFC" (`MSVS_VERSIONS` in `build/vs_toolchain.py`).
+- **Windows 11 SDK 10.0.28000** (`SDK_VERSION`; the docs name 10.0.28000.2270)
+  and its **Debugging Tools, 10.0.26100.3323 or newer**, for PDBs over 4 GiB.
+- `DEPOT_TOOLS_WIN_TOOLCHAIN=0`, so `vs_toolchain.py` uses the local Visual
+  Studio instead of Google's packaged one; `build.ps1` sets it, and sets
+  `vs2026_install` from `vswhere`, because `vs_toolchain.py` only guesses
+  standard paths.
+- An NTFS drive with ~100 GB free, Windows 10 or newer, x64.
+- depot_tools is not needed: Haze does not use gclient. Everything gclient
+  would fetch for the build comes from `DEPS` through `build.ps1`.
+
+**ungoogled-chromium-windows**
+
+Unlike macOS, it has the matching tag: **`158.0.8127.88-1.1`**, whose
+ungoogled submodule is `9746a5f`, exactly Haze's pin. Its `pruning.list` and
+`domain_substitution.list` are identical to the main repo's. Most of its 25
+patches exist because it builds Rust, bindgen and Crubit itself and uses
+Microsoft's `rc.exe`; Haze takes Chromium's pinned tools from `DEPS` instead.
+
+| ungoogled-windows patch | For Haze |
+|---|---|
+| `disable-win-build-output` | **Likely needed.** `third_party/win_build_output` is pruned (105 entries) and is part of the tree, not of `DEPS`. |
+| `fix-building-without-safebrowsing` | **Likely needed** with `safe_browsing_mode=0`. Touches `chrome_content_browser_client.cc`; needs a `Security:` review before it becomes a Haze patch. |
+| `fix-command-ids`, `fix-missing-includes`, `fix-remove-unused-preferences-fields`, `fix-rc` | Maybe; compile errors in ungoogled's config. Adopt only if the build hits them. |
+| `disable-rcpy`, `fix-rc-terminating-error` | Not needed: `build.ps1` fetches Google's `rc.exe` through the `rc_win` DEPS hook, SHA-1 checked. |
+| `fix-building-gn`, `fix-licenses-gn-path`, `fix-python`, `fix-clang-format-exe` | Not needed: gn, Chromium's Python 3.11 and clang-format come from DEPS. |
+| `disable-clang-version-check`, `fix-building-with-rust`, `fix-complex-builtins`, `fix-unsupported-llvm-flags`, `no-unknown-warnings`, `fix-typescript-lib-dom` | Not needed: they adapt to ungoogled's own toolchain. |
+| `disable-reorder-fix-linking` | Not needed: `third_party/pefile_py3` is present, so `reorder_imports` works, and Haze's `haze.exe` patch edits those same lines. |
+| `compile-mini-installer` | Packaging, later. |
+| `disable-encryption` | **Never.** It turns off DPAPI encryption of cookies and passwords. |
+| `disable-machine-id`, `disable-rlz`, `disable-event-log`, `disable-download-warning-prompt` | Privacy and behaviour decisions for later steps, not build fixes. |
+
+None of them is applied yet: without a Windows build there is no evidence for
+which ones M158 needs with Haze's toolchain.
+
+**What changed**
+
+- `scripts/build.ps1` (PowerShell 7.2+): Visual Studio, SDK and Debugging
+  Tools checks; overlay sync with robocopy; the same `build/src` git settings
+  and excludes as the bash scripts; toolchain from `DEPS` (clang and Rust via
+  Chromium's updaters, then gn, ninja, Chromium's own Python 3.11 for `.gn`'s
+  `script_executable`, `rc.exe`, clang-format, libclang, node, esbuild,
+  TypeScript, Go); `args.gn` from ungoogled's flags, `flags/<config>.gn` and an
+  optional `flags/<config>.win.gn`; `gn gen --fail-on-unused-args`; ninja;
+  a log in `build\logs\`. Nothing beyond Git, Python and Visual Studio has to
+  be installed by hand, not even ninja.
+- `scripts/deps_tool.py`: evaluates `Var('x') + '...'` (ninja's package name
+  was silently cut to `infra/3pp/tools/ninja/` before), and a `hook` mode for
+  download hooks such as `rc_win`.
+- Line endings, see `docs/PATCHES.md`: `.gitattributes` (LF everywhere,
+  `*.patch` untouched), `core.eol=lf` in `build/src`, and `git am --keep-cr`,
+  which fixes a bug on every platform: a patch to any of the baseline's 1,377
+  CRLF files would have failed in `apply` while passing `check`.
+- `fetch.sh` and `prepare.sh` run ungoogled's utils through `HAZE_PYTHON`
+  instead of their shebang: `python3` or `python`, 3.10+, never the Microsoft
+  Store stub that `python3` is in Git Bash with a python.org install.
+- The exclude list for `build/src` moved to `scripts/src_git_exclude`, read by
+  both `lib.sh` and `build.ps1`.
+
+**Checked from Linux**
+
+| Check | Result |
+|---|---|
+| Baseline paths: reserved names (CON, NUL, ...), forbidden characters, trailing dot or space | none |
+| Longest baseline path | 200 chars, under MAX_PATH from a checkout path up to ~59 chars |
+| CRLF patch round trip through `patch.sh` (throwaway patch to a CRLF `.bat`) | export → apply → export identical, CRLF kept |
+| Fresh clone with `core.autocrlf=true`, without / with `.gitattributes` | CRLF in 10/10 patches and in `build.sh` / none |
+| Windows downloads: gn, ninja, Python, esbuild, TypeScript, Go (cipd) | all present |
+| clang-format, node, libclang (gcs) | present, sha256 matches DEPS, PE32+ x64 |
+| `rc.exe` (DEPS hook) | present |
+| Chromium's clang and Rust for `Win` | present |
+| Python selection skips the Store stub and Python < 3.10 | yes |
+| Linux: `patch.sh apply` / `export` / `check`, `fetch.sh` and `prepare.sh` re-runs | unchanged |
+
+**Not checked:** `build.ps1` has not run anywhere. No PowerShell is
+available on this machine, and downloading a portable one was not permitted,
+so it has not even been parsed; only brace balance, ASCII-only content and
+that every function it calls is defined were checked.
+
+**To do on Windows**
+
+```powershell
+# Prerequisites: Visual Studio 2026 (C++ desktop + ATL/MFC), Windows SDK
+# 10.0.28000 with Debugging Tools, Git for Windows, Python 3.10+ (python.org,
+# "Add to PATH"), PowerShell 7.2+ (winget install Microsoft.PowerShell),
+# optionally 7-Zip (much faster unpacking). Exclude the folder from Defender.
+```
+
+```sh
+# Git Bash, in a short path such as C:/src:
+git clone --recurse-submodules https://github.com/bjoernhar10/haze-browser haze
+cd haze
+scripts/fetch.sh && scripts/prepare.sh && scripts/patch.sh apply
+```
+
+```powershell
+# PowerShell 7:
+$env:HAZE_JOBS = 8   # fewer with less than 32 GB RAM
+.\scripts\build.ps1 dev chrome
+# Launch once without --user-data-dir: the default location is the check.
+.\build\src\out\Dev\haze.exe
+```
+
+Then confirm, and record build times here:
+
+- The window title ends in "- Haze"; the taskbar button and its jump list say
+  Haze; About (`chrome://settings/help`) shows Haze and the placeholder icon.
+- `%LOCALAPPDATA%\Haze\User Data` exists and no `%LOCALAPPDATA%\Chromium`
+  appeared. Remove it afterwards: it is the real default location, used here
+  only because that is what is being checked. Crashpad writes there even with
+  `--user-data-dir` (step 5).
+- If `gn gen` or the compile fails in safe browsing, win_build_output or rc
+  code, the table above says which ungoogled-windows patch to look at.
+
+**Platform coverage**
+
+Nothing has run on Windows. The bash changes are verified on Linux.
+
 ## Step 6 — macOS (2026-11-27, incomplete: the Mac run is still to do)
 
 This step was worked on from the Linux machine, which has no access to a Mac.

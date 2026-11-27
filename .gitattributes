@@ -1,0 +1,18 @@
+# Every text file checks out with LF on every platform, whatever core.autocrlf
+# Git for Windows was installed with. Bash refuses scripts with CRLF, and
+# PowerShell reads LF fine.
+* text=auto eol=lf
+
+# Patches must reach git am byte for byte: a patch to one of Chromium's CRLF
+# files carries those CRs, and patch.sh applies with --keep-cr. Any conversion
+# here would break it on one platform and not another.
+*.patch -text
+
+# Batch files are the one kind cmd.exe needs with CRLF.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+*.png binary
+*.ico binary
+*.icns binary
+*.ai binary

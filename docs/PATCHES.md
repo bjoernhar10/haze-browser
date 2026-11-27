@@ -36,6 +36,9 @@ scripts/patch.sh check     # does the whole series still apply to a clean baseli
 To change an existing patch, `apply`, edit, `git commit --amend` or
 `git rebase -i baseline` in `build/src`, then `export` again.
 
+On Windows, `fetch.sh`, `prepare.sh` and `patch.sh` run in Git Bash, the same
+scripts as everywhere else; only the build itself is `scripts\build.ps1`.
+
 ### The patch header
 
 Every commit after the baseline needs this, and `export` refuses to run without
@@ -89,6 +92,30 @@ literal, and `--binary` means a patch that touches a binary file still applies.
 
 `export` also deletes patch files that no longer match any commit, so dropping
 a commit and re-exporting really removes the patch.
+
+### Line endings: the same bytes on every platform
+
+A patch made on Linux has to apply on macOS and Windows, byte for byte. Three
+things make that hold:
+
+- **`.gitattributes` in this repo**: every text file checks out with LF on every
+  platform, and `*.patch` is `-text`, so git never converts a patch file. Git
+  for Windows installs with `core.autocrlf=true`; without these lines a fresh
+  Windows clone had CRLF in all ten patches and in every shell script.
+- **`build/src` pins `core.autocrlf=false` and `core.eol=lf`**
+  (`haze_src_git_settings`, run by `prepare.sh` and `patch.sh`). 7,481 baseline
+  files have a `text` attribute but no `eol`, so `core.eol` decides their line
+  endings, and its default (`native`) means CRLF on Windows.
+- **`git am --keep-cr`.** 1,377 baseline files are CRLF in the blob
+  (`.bat`, `.cmd`, much of `third_party/`). By default `git am` strips the CR
+  from every line, so a patch to one of them fails in `apply` while `check`
+  (which uses `git apply`) passes. Tested end to end with a throwaway patch to
+  a CRLF `.bat`: export, apply and export again give identical bytes, and the
+  file keeps its CRLF lines.
+
+The baseline commit itself is not identical across platforms: its 100
+symlinks become plain files on Windows. Patches refer to paths and content,
+not to the baseline hash, and none touches a symlink.
 
 ### What `check` verifies
 
