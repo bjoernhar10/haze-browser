@@ -2,6 +2,61 @@
 
 One entry per step: what is new, and how to test it.
 
+## Step 8 — Privacy audit and network check (2026-11-27)
+
+**What's new**
+
+- `docs/PRIVACY.md`: every item of SPEC §3 with its status and the line of
+  code that proves it, checked in `build/src`, not by patch name. Two rows
+  would have been wrong by patch name alone: ungoogled's `disable-ai.patch`
+  removes model downloads but leaves Gemini (`kGlic`, macOS/Windows) and
+  "Help me write" (`kEnableCompose`) on, and WebGL spoofing lives in a patch
+  named after a flag. One claim of my own was wrong until checked: there is no
+  telemetry opt-in to remove, because the toggle is Chrome-branded only.
+- `scripts/netcheck.sh [dev|release]`: brand-new profile (first run
+  included), `--log-net-log`, idle on `about:blank` for 5 minutes
+  (`HAZE_NETCHECK_SECONDS`), clean shutdown, then a report from two sources:
+  the NetLog and `ss`, sampled every second for the browser's sockets.
+  Exit 0 means zero requests. Linux only for now.
+- `scripts/netlog_report.py`: URL requests with the traffic annotation that
+  names the code behind them (hash → id → file via
+  `tools/traffic_annotation/summary/annotations.xml`), host name lookups,
+  TCP/UDP connects. The hash function reproduces Chromium's own test value.
+
+**Result on Linux: zero requests.** 0 URL requests, 0 lookups, 0 connections,
+0 sockets in 300 s; the NetLog holds 17 events, all local. A positive control
+on `https://example.org` showed the tool does find requests, with annotation
+and source file, and that `ss` agrees.
+
+**Audit summary** (details and evidence in `docs/PRIVACY.md`)
+
+| Status | Items |
+|---|---|
+| covered by ungoogled | third-party cookies blocked, search suggestions off, preloading off, telemetry, crash upload, field trials, clear data on exit (flag), Battery Status |
+| covered by Chromium | Privacy Sandbox ad APIs (retired upstream by M158), reduced User-Agent |
+| needs a Haze patch | HTTPS-First strict mode; Secure DNS (ungoogled turned it **off**; no Mullvad in the provider list); search engine first-run chooser and list (default is "No Search"; Startpage, Qwant, Kagi missing); WebRTC policy (ungoogled's is stricter than SPEC and breaks calls without a proxy); Global Privacy Control; tracking parameters; content blocker; AI entry points; canvas/WebGL/audio noise; WebGL vendor; `hardwareConcurrency` buckets; per-site off switch |
+| not doing | none |
+
+Nothing is fixed in this step, as asked.
+
+**How to test**
+
+```sh
+scripts/netcheck.sh          # ~5.5 min; a Haze window opens, leave it alone
+cat build/profiles/netcheck-*/report.txt
+```
+
+`netcheck.sh` also redirects `XDG_CONFIG_HOME`, because crashpad would
+otherwise create `~/.config/haze` (step 5). Checked: nothing appeared in
+`~/.config` or `~/.cache`.
+
+**Platform coverage**
+
+The network check ran on Linux only; macOS and Windows need their own socket
+sampling in `netcheck.sh`. The audit read the shared code; platform-only
+defaults were noted where they differ (`kGlic` is on for macOS and Windows,
+off on Linux).
+
 ## Step 7 — Windows (2026-11-27, incomplete: the Windows run is still to do)
 
 Worked on from the Linux machine, which has no access to Windows. What can be
