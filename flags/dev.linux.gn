@@ -1,0 +1,9 @@
+# Haze dev config, Linux only. Appended after dev.gn by scripts/build.sh.
+#
+# use_mold is declared only off Apple and Windows, so on macOS this line would
+# be an unused arg and fail gn gen --fail-on-unused-args.
+
+# This Chromium version links non-official Linux builds with mold by default,
+# but mold comes from a DEPS entry that the source tarball does not carry.
+# Turning it off restores lld from the bundled clang, the next fastest linker.
+use_mold = false

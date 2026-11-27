@@ -14,11 +14,15 @@ DEPS is Python, but it calls Var() and is not safe to exec, so this reads the
 one entry it is asked for textually.
 
 Usage:
-  deps_tool.py <DEPS> gcs  <entry> [host_os]  -> "bucket object_name sha256 output_file"
-  deps_tool.py <DEPS> cipd <entry>            -> "package version"
+  deps_tool.py <DEPS> gcs  <entry> [host_os [host_cpu]]
+      -> "bucket object_name sha256 output_file"
+  deps_tool.py <DEPS> cipd <entry>
+      -> "package version"
 
-A gcs entry may list one object per host OS, each with its own condition, so
-the matching one is picked by host_os ("linux", "mac", "win"; default linux).
+A gcs entry may list one object per host, each with its own condition, so the
+matching one is picked by host_os ("linux", "mac", "win"; default linux) and
+host_cpu ("x64", "arm64"; default x64). libclang, for one, ships separate Mac
+objects for Intel and Apple Silicon.
 output_file is "-" when the entry does not name one, which means the object is
 an archive to unpack rather than a single file to install.
 """
@@ -67,7 +71,16 @@ def field(body, name, default=None, variables=None):
     sys.exit('deps_tool.py: entry has no %s' % name)
 
 
-def gcs(body, host_os):
+def _matches_host(condition, host_os, host_cpu):
+    """Whether every host_os/host_cpu clause in a DEPS condition holds."""
+    for var, value in re.findall(r'(host_os|host_cpu)\s*==\s*"([^"]+)"',
+                                 condition):
+        if value != (host_os if var == 'host_os' else host_cpu):
+            return False
+    return True
+
+
+def gcs(body, host_os, host_cpu):
     bucket = field(body, 'bucket')
     objects = re.findall(r'\{([^{}]*)\}', body, re.S)
     if not objects:
@@ -80,11 +93,11 @@ def gcs(body, host_os):
         condition = field(obj, 'condition', default='')
         if not condition:
             chosen = chosen or obj
-        elif 'host_os == "%s"' % host_os in condition:
+        elif _matches_host(condition, host_os, host_cpu):
             chosen = obj
             break
     if chosen is None:
-        sys.exit('deps_tool.py: no object for host_os %s' % host_os)
+        sys.exit('deps_tool.py: no object for %s-%s' % (host_os, host_cpu))
 
     return [
         bucket,
@@ -103,10 +116,12 @@ def cipd(body, variables):
 
 def main(argv):
     if len(argv) < 4 or argv[2] not in ('gcs', 'cipd'):
-        sys.exit('usage: deps_tool.py <DEPS> gcs|cipd <entry> [host_os]')
+        sys.exit('usage: deps_tool.py <DEPS> gcs|cipd <entry> '
+                 '[host_os [host_cpu]]')
     body, variables = read_entry(argv[1], argv[3])
     if argv[2] == 'gcs':
-        values = gcs(body, argv[4] if len(argv) > 4 else 'linux')
+        values = gcs(body, argv[4] if len(argv) > 4 else 'linux',
+                     argv[5] if len(argv) > 5 else 'x64')
     else:
         values = cipd(body, variables)
     print(' '.join(values))

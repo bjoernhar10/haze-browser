@@ -1,10 +1,11 @@
 # Haze dev config: built to iterate on, not to ship.
 #
-# scripts/build.sh writes args.gn as ungoogled-chromium's flags.gn followed by
-# this file, so only the differences from ungoogled's args belong here. Every
-# arg below was checked against `gn args out/Dev --list` for the pinned
-# Chromium version, and args that would only repeat a default are left out.
-# is_official_build, for example, is already false by default.
+# scripts/build.sh writes args.gn as ungoogled-chromium's flags.gn, then this
+# file, then dev.<platform>.gn. Only the differences from ungoogled's args
+# belong here, and an arg GN declares on one platform only goes in that
+# platform's file. Every arg below was checked against `gn args out/Dev --list`
+# for the pinned Chromium version, and args that would only repeat a default
+# are left out. is_official_build, for example, is already false by default.
 
 # Link each component as its own shared library, so one changed file relinks one
 # .so instead of the whole browser. The default follows is_debug, so turning
@@ -19,8 +20,3 @@ is_debug = false
 # The largest single win on link time. Use symbol_level = 1 when a backtrace is
 # needed; v8_symbol_level and blink_symbol_level follow this value on their own.
 symbol_level = 0
-
-# This Chromium version links non-official Linux builds with mold by default,
-# but mold comes from a DEPS entry that the source tarball does not carry.
-# Turning it off restores lld from the bundled clang, the next fastest linker.
-use_mold = false

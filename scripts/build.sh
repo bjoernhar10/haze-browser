@@ -38,11 +38,18 @@ USAGE
 }
 
 # clang-format sits beside gn, in a sibling of the same per-platform directory.
-HAZE_FORMAT_DIR="${HAZE_BUILDTOOLS_DIR}-format"
+# Apple Silicon is the exception: DEPS and Blink's style_format.py both use
+# mac_arm64-format there, while gn stays in buildtools/mac.
+if [ "$(haze_platform)" = mac ] && [ "$(haze_host_cpu)" = arm64 ]; then
+  HAZE_FORMAT_DIR='mac_arm64-format'
+else
+  HAZE_FORMAT_DIR="${HAZE_BUILDTOOLS_DIR}-format"
+fi
 
 CONFIG=''
 OUT_DIR=''
 FLAGS_FILE=''
+PLATFORM_FLAGS_FILE=''
 
 main() {
   case "${1:-}" in
@@ -62,9 +69,15 @@ main() {
   if [ "$#" -eq 0 ]; then
     set -- chrome
   fi
+  PLATFORM_FLAGS_FILE="${HAZE_FLAGS_DIR}/${CONFIG}.$(haze_platform).gn"
 
-  # node is not required on the host: the pinned one is fetched below.
-  haze_require_cmd python3 git rsync ninja gperf curl tar
+  # node is not required on the host: the pinned one is fetched below. gperf is
+  # only needed on Linux; macOS builds use the one in Xcode.
+  haze_require_python
+  haze_require_cmd git rsync ninja curl tar
+  if [ "$(haze_platform)" = linux ]; then
+    haze_require_cmd gperf
+  fi
   haze_require_file "${FLAGS_FILE}"
   haze_assert_version_match
   if [ ! -f "${HAZE_SRC_DIR}/chrome/VERSION" ]; then
@@ -113,18 +126,22 @@ ensure_toolchain() {
   haze_run python3 ./tools/clang/scripts/update.py
   haze_run python3 ./tools/rust/update_rust.py
 
-  if grep -q '^use_sysroot[[:space:]]*=[[:space:]]*false' "${FLAGS_FILE}"; then
-    haze_info "use_sysroot=false; skipping sysroot install"
-  else
-    haze_run python3 ./build/linux/sysroot_scripts/install-sysroot.py --arch=amd64
-  fi
+  case "$(haze_platform)" in
+    linux)
+      if grep -q '^use_sysroot[[:space:]]*=[[:space:]]*false' "${FLAGS_FILE}"; then
+        haze_info "use_sysroot=false; skipping sysroot install"
+      else
+        haze_run python3 ./build/linux/sysroot_scripts/install-sysroot.py --arch=amd64
+      fi
+      # Blink runs gperf from this path on Linux; macOS uses Xcode's.
+      link_host_tool gperf "${HAZE_SRC_DIR}/third_party/gperf/cipd/bin/gperf"
+      ;;
+    mac) ensure_xcode ;;
+  esac
 
-  # Pruning removed Chromium's bundled python, node and gperf, but the build
-  # still looks for them at these paths, so point them at the host's copies.
-  # .gn sets script_executable to the cpython3 path, so gn gen fails with exit
-  # 127 without that one.
+  # Pruning removed Chromium's bundled python, but .gn sets script_executable to
+  # this path on every platform, so gn gen fails with exit 127 without it.
   link_host_tool python3 "${HAZE_SRC_DIR}/third_party/cpython3/host/bin/python3"
-  link_host_tool gperf "${HAZE_SRC_DIR}/third_party/gperf/cipd/bin/gperf"
   ensure_clang_format
   ensure_libclang
   ensure_node
@@ -163,12 +180,21 @@ ensure_libclang() {
 # Chromium pins an exact node and asserts the version during the build, so the
 # host's node will not do: third_party/node:check_version fails the build when
 # it differs. The pinned one is a gcs archive like the others.
+# The directory and archive names are the ones third_party/node/node.gni and
+# node.py expect for each host.
 ensure_node() {
-  local dir="${HAZE_SRC_DIR}/third_party/node/linux"
+  local sub archive
+  case "$(haze_platform)-$(haze_host_cpu)" in
+    linux-x64) sub='linux' archive='node-linux-x64' ;;
+    mac-arm64) sub='mac_arm64' archive='node-darwin-arm64' ;;
+    mac-x64) sub='mac' archive='node-darwin-x64' ;;
+    *) haze_die "no pinned node for $(haze_platform)-$(haze_host_cpu)" ;;
+  esac
+  local dir="${HAZE_SRC_DIR}/third_party/node/${sub}"
   ensure_gcs_dep \
-    'src/third_party/node/linux' \
+    "src/third_party/node/${sub}" \
     "${dir}" \
-    "${dir}/node-linux-x64/bin/node" \
+    "${dir}/${archive}/bin/node" \
     'node'
 }
 
@@ -185,7 +211,8 @@ ensure_gcs_dep() {
 
   haze_step "fetching ${label}"
   local fields bucket object sha output
-  fields=$(deps_entry "${HAZE_SRC_DIR}/DEPS" gcs "${entry}" "$(haze_platform)")
+  fields=$(deps_entry "${HAZE_SRC_DIR}/DEPS" gcs "${entry}" \
+    "$(haze_platform)" "$(haze_host_cpu)")
   bucket=$(printf '%s' "${fields}" | cut -d' ' -f1)
   object=$(printf '%s' "${fields}" | cut -d' ' -f2)
   sha=$(printf '%s' "${fields}" | cut -d' ' -f3)
@@ -194,7 +221,7 @@ ensure_gcs_dep() {
   local archive="${HAZE_DOWNLOAD_DIR}/${object##*/}"
   mkdir -p "${HAZE_DOWNLOAD_DIR}" "${dest}"
   haze_run curl -sSfL -o "${archive}" "https://storage.googleapis.com/${bucket}/${object}"
-  if ! printf '%s  %s\n' "${sha}" "${archive}" | sha256sum -c - >/dev/null 2>&1; then
+  if ! haze_sha256_ok "${archive}" "${sha}"; then
     rm -f "${archive}"
     haze_die "${label} does not match the sha256 DEPS declares for it"
   fi
@@ -327,6 +354,27 @@ deps_entry() {
   python3 -I "${HAZE_SCRIPTS_DIR}/deps_tool.py" "$@"
 }
 
+# Chromium builds against the macOS SDK inside Xcode.app; the Command Line
+# Tools alone have no usable SDK for it. M158's bots use the 27.0 SDK
+# (mac_sdk_official_version), and newer ones usually work.
+ensure_xcode() {
+  local developer sdk
+  developer=$(xcode-select -p 2>/dev/null) \
+    || haze_die "no Xcode selected; install Xcode, then: sudo xcode-select -s /Applications/Xcode.app"
+  case "${developer}" in
+    *CommandLineTools*)
+      haze_die "xcode-select points at the Command Line Tools; run: sudo xcode-select -s /Applications/Xcode.app"
+      ;;
+  esac
+  sdk=$(xcrun --sdk macosx --show-sdk-version 2>/dev/null) \
+    || haze_die "Xcode has no macOS SDK; open Xcode once to finish installing it"
+  haze_info "Xcode $(xcodebuild -version 2>/dev/null | head -1 | cut -d' ' -f2), macOS SDK ${sdk}"
+  case "${sdk}" in
+    2[7-9]* | [3-9][0-9]*) ;;
+    *) haze_warn "macOS SDK ${sdk} is older than the 27.0 Chromium M158 is built with; the build may fail" ;;
+  esac
+}
+
 link_host_tool() {
   local tool="$1" dest="$2" src
   src=$(command -v "${tool}")
@@ -369,6 +417,12 @@ write_args() {
     cat "${HAZE_UNGOOGLED_DIR}/flags.gn"
     printf '\n# --- Haze: flags/%s.gn ---\n' "${CONFIG}"
     cat "${FLAGS_FILE}"
+    # Args that only exist on one platform: gn gen --fail-on-unused-args
+    # rejects them everywhere else.
+    if [ -f "${PLATFORM_FLAGS_FILE}" ]; then
+      printf '\n# --- Haze: flags/%s ---\n' "${PLATFORM_FLAGS_FILE##*/}"
+      cat "${PLATFORM_FLAGS_FILE}"
+    fi
   } > "${OUT_DIR}/args.gn"
   haze_info "$(grep -cvE '^[[:space:]]*(#|$)' "${OUT_DIR}/args.gn") args in ${OUT_DIR}/args.gn"
 }

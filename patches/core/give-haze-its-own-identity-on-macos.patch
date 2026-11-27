@@ -4,18 +4,36 @@ Date: Thu, 26 Nov 2026 22:36:12 +0100
 Subject: [PATCH] Give Haze its own identity on macOS
 
 Why: Without this Haze would keep its profile in Application Support/Chromium,
-next to an installed Chromium, and read Chromium's initial preferences. The
-bundle name and ID already come from BRANDING; this covers the paths and the
-document type names Finder shows.
+next to an installed Chromium, read Chromium's initial preferences and register
+the chromium:// launch scheme. The bundle name and ID come from BRANDING; this
+covers the paths, the haze:// scheme in code and Info.plist, and the document
+type names Finder shows.
 Security-relevant: no
 Area: core
 ---
+ build/apple/tweak_info_plist.py                             | 4 ++--
  chrome/app/app-Info.plist                                   | 4 ++--
  chrome/browser/mac/initial_prefs.mm                         | 6 +++---
+ chrome/browser/shell_integration_mac.mm                     | 2 +-
  .../os_integration/mac/apps_folder_support.mm               | 2 +-
  chrome/common/chrome_paths_mac.mm                           | 2 +-
- 4 files changed, 7 insertions(+), 7 deletions(-)
+ 6 files changed, 10 insertions(+), 10 deletions(-)
 
+diff --git a/build/apple/tweak_info_plist.py b/build/apple/tweak_info_plist.py
+index ed006ae..27bbc42 100755
+--- a/build/apple/tweak_info_plist.py
++++ b/build/apple/tweak_info_plist.py
+@@ -295,8 +295,8 @@ def _SetDirectLaunchUrlScheme(plist, bundle_identifier):
+         # in chrome/browser/shell_integration_mac.mm.
+         # Note: chrome/installer/mac/signing/modification.py handles removing
+         # this scheme for non-stable channels during signing.
+-    elif bundle_identifier == 'org.chromium.Chromium':
+-        scheme = 'chromium'
++    elif bundle_identifier == 'org.hazebrowser.Haze':
++        scheme = 'haze'
+ 
+     url_types = plist.get('CFBundleURLTypes')
+     if not url_types:
 diff --git a/chrome/app/app-Info.plist b/chrome/app/app-Info.plist
 index 6fada0a..0aa4310 100644
 --- a/chrome/app/app-Info.plist
@@ -55,6 +73,19 @@ index 77e599a..e224c8c 100644
  #endif  // BUILDFLAG(GOOGLE_CHROME_BRANDING)
  
  }  // namespace
+diff --git a/chrome/browser/shell_integration_mac.mm b/chrome/browser/shell_integration_mac.mm
+index f41bf44..e039648 100644
+--- a/chrome/browser/shell_integration_mac.mm
++++ b/chrome/browser/shell_integration_mac.mm
+@@ -329,7 +329,7 @@ std::string GetDirectLaunchUrlScheme() {
+       return "google-chrome";
+   }
+ #else
+-  return "chromium";
++  return "haze";
+ #endif
+ }
+ 
 diff --git a/chrome/browser/web_applications/os_integration/mac/apps_folder_support.mm b/chrome/browser/web_applications/os_integration/mac/apps_folder_support.mm
 index d8cb9f6..00205e7 100644
 --- a/chrome/browser/web_applications/os_integration/mac/apps_folder_support.mm

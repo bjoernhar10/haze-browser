@@ -2,6 +2,118 @@
 
 One entry per step: what is new, and how to test it.
 
+## Step 6 — macOS (2026-11-27, incomplete: the Mac run is still to do)
+
+This step was worked on from the Linux machine, which has no access to a Mac.
+Everything that can be prepared and checked without one is done; building,
+launching and the in-app checks are listed below for the Mac.
+
+**What Chromium M158 needs on macOS**
+
+- Xcode with the **macOS 27.0 SDK** (`mac_sdk_official_version` in
+  `build/config/mac/mac_sdk.gni`, SDK build 26A425). That is what the bots use;
+  a newer SDK usually works, an older one may not. Xcode 27 runs on Apple
+  Silicon only. The Command Line Tools alone are not enough.
+- Deployment target and minimum macOS for the built app: **13.0**.
+- An APFS volume (the default). arm64 is the host architecture on Apple
+  Silicon, so `target_cpu` stays at its default and is not set.
+- Python **3.10 or newer**. Xcode's `/usr/bin/python3` is 3.9, and 39 build
+  scripts use 3.10 syntax, V8's metagen among them (`-> str | None` without
+  `from __future__ import annotations`), which fails at import.
+
+**ungoogled-chromium-macos**
+
+It has no tag for 158 yet; the newest is `157.0.8103.78-1.1`, and `master` is
+on 157 too. Read as a reference, not pinned. Most of its 24 patches exist
+because it builds clang, Rust, bindgen and Crubit itself and uses Homebrew's
+esbuild and TypeScript. Haze takes the toolchains Chromium pins in `DEPS`
+instead, as on Linux, so it does not need those. Two of them are relevant:
+
+- `fix-disabling-safebrowsing`: GN fixes for `safe_browsing_mode=0` on macOS.
+  Not applied ahead of time: written for 157, and it also deletes sandbox
+  parameter code in `chrome_content_browser_client.cc` and a policy entry,
+  which CLAUDE.md wants disabled rather than deleted, with a reason. If
+  `gn gen` fails on the Mac in `chrome/browser/extensions`, `chrome/browser/ui`
+  or `chrome/services/file_util`, that patch is where to look.
+- `add-local-network-usage-description`: since macOS 15 the app and helper
+  bundles need `NSLocalNetworkUsageDescription`, or requests to LAN addresses
+  fail with `ERR_ADDRESS_UNREACHABLE`. Not part of this step; noted for a later
+  macOS step.
+
+They also moved to a bundle ID that matches the signing identifier, because
+macOS keys privacy permissions such as Local Network to the bundle ID. For
+Haze that means the signing identity at packaging time must be
+`org.hazebrowser.Haze`.
+
+**What changed**
+
+- `scripts/lib.sh`: `haze_host_cpu` (Chromium's `x64`/`arm64`),
+  `haze_require_python` (3.10+, fails early with a hint), `haze_sha256_ok`
+  (Python's hashlib instead of GNU `sha256sum`, which macOS lacks; `shasum`
+  would need Perl).
+- `scripts/deps_tool.py` picks a gcs object by `host_cpu` as well as
+  `host_os`. Before, an Apple Silicon Mac would have fetched the Intel libclang.
+- `scripts/build.sh`:
+  - Linux-only toolchain steps (sysroot, gperf link) run only on Linux; macOS
+    checks for Xcode and warns on an SDK older than 27.
+  - node comes from `node/mac_arm64` (`node-darwin-arm64`), clang-format from
+    `buildtools/mac_arm64-format`; gn stays in `buildtools/mac`.
+  - `args.gn` gets `flags/<config>.<platform>.gn` appended when it exists.
+    `use_mold` moved to `flags/dev.linux.gn`: GN declares it only off Apple and
+    Windows, so on a Mac it would be an unused arg and fail
+    `--fail-on-unused-args`.
+- macOS identity patch: the `haze://` launch scheme, in
+  `shell_integration_mac.mm` and in `build/apple/tweak_info_plist.py`, which
+  adds the scheme to Info.plist only for bundle IDs it knows. Step 5 had left
+  macOS on `chromium://`.
+
+**Checked from Linux**
+
+| Check | Result |
+|---|---|
+| Paths in the baseline that clash on a case- and normalisation-insensitive FS | 0 of 527,761 (one non-ASCII path, an emoji, which has no decomposed form) |
+| Same for the Haze repo | 0 |
+| GNU-only tools and bash 4 features in `scripts/` | only `sha256sum`, replaced; ungoogled's unpacker already supports BSD tar |
+| gcs downloads for mac-arm64 (libclang, clang-format, node) | present, sha256 matches DEPS, clang-format is Mach-O arm64, archives contain the files `build.sh` checks for |
+| cipd packages for mac-arm64 (gn, esbuild, TypeScript, Go) | all present |
+| Chromium's clang and Rust for `Mac_arm64` | both present |
+| Linux build with the ported scripts | passes, `args.gn` gets `dev.linux.gn` |
+| `patch.sh check` / `export` | clean / no change on a second run |
+
+**To do on the Mac** (Apple Silicon)
+
+```sh
+# Prerequisites
+xcode-select -p          # must be .../Xcode.app/..., not CommandLineTools
+xcrun --sdk macosx --show-sdk-version   # 27.0 or newer
+brew install ninja python                # python3 on PATH must be >= 3.10
+df -h .                                  # ~40 GB free for build/
+
+git clone --recurse-submodules https://github.com/bjoernhar10/haze-browser
+cd haze-browser
+scripts/fetch.sh && scripts/prepare.sh && scripts/patch.sh apply
+HAZE_JOBS=<cores, fewer if RAM < 32 GB> scripts/build.sh dev chrome
+
+# Launch once without --user-data-dir: the default location is the check.
+open build/src/out/Dev/Haze.app
+```
+
+Then confirm, and record build times here:
+
+- Dock and menu bar say **Haze**; Haze menu → About Haze shows Haze and the
+  placeholder icon (the Dock icon may still be Chromium's: `Assets.car`, step 5).
+- `defaults read "$PWD/build/src/out/Dev/Haze.app/Contents/Info" CFBundleIdentifier`
+  → `org.hazebrowser.Haze`; `CFBundleURLTypes` lists `haze`.
+- `~/Library/Application Support/Haze/` exists and no new
+  `Application Support/Chromium/` appeared. Remove it afterwards: it is the
+  real default location, used here only because that is what is being checked.
+- `security find-generic-password -s "Haze Safe Storage"` finds the key once a
+  password or cookie has been stored.
+
+**Platform coverage**
+
+The scripts are verified on Linux only. Nothing has run on macOS yet.
+
 ## Step 5 — Branding (2026-11-26)
 
 **What's new**

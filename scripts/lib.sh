@@ -137,6 +137,27 @@ haze_require_cmd() {
   done
 }
 
+# Chromium's build scripts use Python 3.10 syntax (`-> str | None` in V8's
+# metagen, among others), which fails at import time on older interpreters.
+# macOS's /usr/bin/python3 from Xcode is 3.9, so check early instead of hours
+# into a build.
+haze_require_python() {
+  haze_require_cmd python3
+  python3 -I -c 'import sys; sys.exit(sys.version_info < (3, 10))' \
+    || haze_die "python3 is $(python3 -I -c 'import platform; print(platform.python_version())'); 3.10 or newer is required (macOS: brew install python)"
+}
+
+# sha256sum is GNU-only and macOS's shasum needs Perl; python3 is required on
+# every platform anyway, so one code path serves all. Non-zero on mismatch.
+haze_sha256_ok() {
+  python3 -I -c 'import hashlib, sys
+digest = hashlib.sha256()
+with open(sys.argv[1], "rb") as f:
+    for chunk in iter(lambda: f.read(1 << 20), b""):
+        digest.update(chunk)
+sys.exit(digest.hexdigest() != sys.argv[2].lower())' "$1" "$2"
+}
+
 haze_require_file() {
   [ -f "$1" ] || haze_die "required file not found: $1"
 }
@@ -176,6 +197,15 @@ haze_platform() {
 }
 
 # Parallelism for ninja and friends. Override with HAZE_JOBS.
+# Chromium's names for the host architecture, as DEPS conditions use them.
+haze_host_cpu() {
+  case "$(uname -m)" in
+    x86_64 | amd64) printf 'x64\n' ;;
+    arm64 | aarch64) printf 'arm64\n' ;;
+    *) haze_die "unsupported architecture: $(uname -m)" ;;
+  esac
+}
+
 haze_jobs() {
   if [ -n "${HAZE_JOBS:-}" ]; then
     printf '%s\n' "${HAZE_JOBS}"
