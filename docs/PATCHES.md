@@ -166,6 +166,13 @@ Chromium's on purpose: a Haze value would be a fingerprinting signal.
 | 8 | `core/give-haze-its-own-install-identity-on-windows.patch` | core | Give Haze its own install identity on Windows | yes |
 | 9 | `core/name-the-windows-executable-haze-exe.patch` | core | Name the Windows executable haze.exe | no |
 | 10 | `core/use-a-placeholder-haze-icon-instead-of-chromiums-logo.patch` | core | Use a placeholder Haze icon instead of Chromium's logo | no |
+| 11 | `core/let-hazes-code-use-blinks-public-common-headers.patch` | core | Let Haze's code use Blink's public common headers | no |
+| 12 | `privacy/apply-hazes-profile-pref-defaults-after-chromium-registers-i.patch` | privacy | Apply Haze's profile pref defaults after Chromium registers its own | yes |
+| 13 | `privacy/turn-on-global-privacy-control.patch` | privacy | Turn on Global Privacy Control | yes |
+| 14 | `privacy/turn-off-and-hide-the-ai-features.patch` | privacy | Turn off and hide the AI features | yes |
+| 15 | `privacy/turn-off-the-privacy-sandbox-ad-apis-that-pages-can-still-re.patch` | privacy | Turn off the Privacy Sandbox ad APIs that pages can still reach | yes |
+| 16 | `privacy/make-duckduckgo-the-default-search-engine.patch` | privacy | Make DuckDuckGo the default search engine | no |
+| 17 | `privacy/upgrade-dns-to-dns-over-https-automatically.patch` | privacy | Upgrade DNS to DNS over HTTPS automatically | yes |
 
 One dep line in `chrome/browser/BUILD.gn` adds `//haze` to the browser's
 `deps`, which puts `overlay/BUILD.gn`'s `group("haze")` in the build graph.

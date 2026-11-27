@@ -1,0 +1,82 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Haze <patches@haze.invalid>
+Date: Fri, 27 Nov 2026 12:16:14 +0100
+Subject: [PATCH] Turn off the Privacy Sandbox ad APIs that pages can still
+ reach
+
+Why: By M158 Chromium has retired most of the Privacy Sandbox, but Topics,
+Attribution Reporting and fenced frames are still exposed to pages
+(document.browsingTopics, attributionsrc, <fencedframe>). Each is turned off
+at its base::Feature, and Topics and Attribution Reporting also lose their
+stable Blink status, because content/child/runtime_features.cc leaves the Blink
+feature alone when the base::Feature is merely disabled by default.
+Security-relevant: yes
+Security: Touches third_party/blink to turn off fenced frames and to drop
+two runtime features from stable; this removes API surface and changes no
+isolation or permission logic.
+Area: privacy
+---
+ components/attribution_reporting/features.cc                    | 2 +-
+ services/network/public/cpp/features.cc                         | 2 +-
+ third_party/blink/common/features.cc                            | 2 +-
+ .../blink/renderer/platform/runtime_enabled_features.json5      | 2 --
+ 4 files changed, 3 insertions(+), 5 deletions(-)
+
+diff --git a/components/attribution_reporting/features.cc b/components/attribution_reporting/features.cc
+index b199e76..7eda43f 100644
+--- a/components/attribution_reporting/features.cc
++++ b/components/attribution_reporting/features.cc
+@@ -9,6 +9,6 @@
+ namespace attribution_reporting::features {
+ 
+ // Controls whether the Conversion Measurement API infrastructure is enabled.
+-BASE_FEATURE(kConversionMeasurement, base::FEATURE_ENABLED_BY_DEFAULT);
++BASE_FEATURE(kConversionMeasurement, base::FEATURE_DISABLED_BY_DEFAULT);
+ 
+ }  // namespace attribution_reporting::features
+diff --git a/services/network/public/cpp/features.cc b/services/network/public/cpp/features.cc
+index 263ac78..db1c7e2 100644
+--- a/services/network/public/cpp/features.cc
++++ b/services/network/public/cpp/features.cc
+@@ -416,7 +416,7 @@ BASE_FEATURE(kAllowSameOriginCredentialsWithDisableWebSecurity,
+ 
+ // https://github.com/patcg-individual-drafts/topics
+ // Kill switch for the Topics API.
+-BASE_FEATURE(kBrowsingTopics, base::FEATURE_ENABLED_BY_DEFAULT);
++BASE_FEATURE(kBrowsingTopics, base::FEATURE_DISABLED_BY_DEFAULT);
+ 
+ 
+ BASE_FEATURE(kIncreaseCookieAccessCacheSize, base::FEATURE_ENABLED_BY_DEFAULT);
+diff --git a/third_party/blink/common/features.cc b/third_party/blink/common/features.cc
+index 214e1ef..278302f 100644
+--- a/third_party/blink/common/features.cc
++++ b/third_party/blink/common/features.cc
+@@ -682,7 +682,7 @@ BASE_FEATURE_PARAM(bool,
+ // this feature does not automatically expose this element to the web, it only
+ // allows the element to be enabled by the runtime enabled feature, for origin
+ // trials.
+-BASE_FEATURE(kFencedFrames, base::FEATURE_ENABLED_BY_DEFAULT);
++BASE_FEATURE(kFencedFrames, base::FEATURE_DISABLED_BY_DEFAULT);
+ 
+ // Enable sending event-level reports through reportEvent() in cross-origin
+ // subframes. This requires opt-in both from the cross-origin subframe that is
+diff --git a/third_party/blink/renderer/platform/runtime_enabled_features.json5 b/third_party/blink/renderer/platform/runtime_enabled_features.json5
+index 9aaaed9..2aa301f 100644
+--- a/third_party/blink/renderer/platform/runtime_enabled_features.json5
++++ b/third_party/blink/renderer/platform/runtime_enabled_features.json5
+@@ -769,7 +769,6 @@
+     },
+     {
+       name: "AttributionReporting",
+-      status: "stable",
+       base_feature: "none",
+       public: true,
+     },
+@@ -6943,7 +6942,6 @@
+       name: "TopicsAPI",
+       base_feature: "none",
+       public: true,
+-      status: "stable",
+     },
+     // This feature allows touch dragging and a context menu to occur
+     // simultaneously, with the assumption that the menu is non-modal.  Without

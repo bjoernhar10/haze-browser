@@ -8,6 +8,8 @@ own.
 
 - **covered**: the pinned tree already behaves as SPEC asks. "By ungoogled"
   or "by Chromium" says who made it so.
+- **covered by Haze**: a Haze patch or Haze's default-prefs hook makes it so;
+  the patch is named.
 - **needs a Haze patch**: SPEC asks for something the tree does not do, or
   does differently.
 - **not doing**: deliberately left as it is, with the reason.
@@ -29,22 +31,54 @@ spoofing lives in a patch named after a flag.
 | Area | SPEC | Today | Status | Evidence |
 |---|---|---|---|---|
 | Third-party cookies | Blocked | Blocked | **covered** by ungoogled | `components/content_settings/core/browser/cookie_settings.cc`: `kCookieControlsMode` registered as `kBlockThirdParty` (inox `0006-modify-default-prefs`; Chromium's default is `kIncognitoOnly`). |
-| HTTPS | HTTPS-First, warn before loading HTTP | HTTPS upgrades and "balanced" mode on; the strict mode that warns before every HTTP page is off | **needs a Haze patch** | `chrome/browser/ui/browser_ui_prefs.cc`: `kHttpsOnlyModeEnabled` = `false`. `kHttpsUpgrades` and `kHttpsFirstBalancedModeAutoEnable` are enabled (`chrome/common/chrome_features.cc`), so HTTP is upgraded where possible and warned about only on some sites. |
-| Secure DNS | Automatic upgrade; picker with Quad9, Mullvad, Cloudflare, custom | **Off** | **needs a Haze patch** | ungoogled's `doh-changes.patch` sets the default to `SecureDnsMode::kOff` in `chrome/browser/net/default_dns_over_https_config_source.cc` (Chromium's is `kAutomatic`). `net/dns/public/doh_provider_entry.cc` lists Quad9 and Cloudflare but no Mullvad. |
-| Search engine | Chosen on first run, no preselection; DuckDuckGo, Startpage, Brave Search, Qwant, Ecosia, Kagi, custom; no Google default | Default is "No Search"; offered: DuckDuckGo, Brave, Bing, Ecosia; no first-run choice | **needs a Haze patch** | Read from `chrome://settings/searchEngines` in a fresh profile (region: Germany; the prepopulated list depends on the region). ungoogled's `replace-google-search-engine-with-nosearch.patch` puts "No Search" where Google was, so there is no Google default and no preselection that sends queries anywhere. Missing: the first-run chooser, Startpage, Qwant and Kagi; Bing is offered although SPEC does not list it. |
+| HTTPS | HTTPS-First, warn before loading HTTP | Strict HTTPS-First on | **covered by Haze** | `privacy/apply-hazes-profile-pref-defaults…`: `haze::SetProfilePrefDefaults` sets `kHttpsOnlyModeEnabled` to `true` (Chromium registers `false` in `chrome/browser/ui/browser_ui_prefs.cc`). |
+| Secure DNS | Automatic upgrade; picker with Quad9, Mullvad, Cloudflare, custom | Automatic; dropdown offers Quad9, Mullvad, Cloudflare and custom | **covered by Haze** | `privacy/upgrade-dns-to-dns-over-https-automatically.patch`: back to `SecureDnsMode::kAutomatic` and `kDnsOverHttpsUpgrade` on (ungoogled had both off); the DoH probe asks for `example.com`, because domain substitution had turned its Google name into one that never resolves, so automatic mode could never upgrade; Mullvad added (`dns.mullvad.net`, `194.242.2.2`, `2a07:e340::2`, checked before adding); Quad9's entry switched on; every other provider removed from the dropdown but kept for the upgrade mapping. The probe is a request of its own, see below. |
+| Search engine | Chosen on first run, no preselection; DuckDuckGo, Startpage, Brave Search, Qwant, Ecosia, Kagi, custom; no Google default | DuckDuckGo default; no first-run choice yet | **covered by Haze** until step 27, then **needs a Haze patch** | `privacy/make-duckduckgo-the-default-search-engine.patch`: `GetPrepopulatedFallbackSearch` returns DuckDuckGo, also in the 11 regions (CN, HK, KH, KR, LA, MN, MO, TW, UZ, VN and the unknown-country list) that do not list it. The first-run picker, Startpage, Qwant and Kagi come in step 27. |
 | Search suggestions | Off (opt-in) | Off | **covered** by ungoogled | `chrome/browser/profiles/profile.cc`: `kSearchSuggestEnabled` registered `false` (inox `0006`). |
 | Preloading / network prediction | Off | Off | **covered** by ungoogled | `chrome/browser/preloading/preloading_prefs.h`: `NetworkPredictionOptions::kDefault = kDisabled` (inox `0006`; Chromium's is wifi-only). |
-| WebRTC | `default_public_interface_only` | `disable_non_proxied_udp` | **needs a Haze patch** | `chrome/browser/ui/browser_ui_prefs.cc`: `kWebRTCIPHandlingPolicy` = `kWebRTCIPHandlingDisableNonProxiedUdp` (ungoogled `default-webrtc-ip-handling-policy`). Stricter than SPEC: without a proxy, WebRTC gets no UDP at all, which breaks or degrades calls. SPEC's policy hides local IPs and keeps calls working. |
-| Global Privacy Control | On: `Sec-GPC: 1` and `navigator.globalPrivacyControl` | Off | **needs a Haze patch** | `kGlobalPrivacyControlApi` and `kGlobalPrivacyControlForce` are both `FEATURE_DISABLED_BY_DEFAULT` (generated from `runtime_enabled_features.json5`, status `experimental`). Without them `IsGlobalPrivacyControlFeatureAndSettingEnabled()` returns false, and neither the header (`content/renderer/render_frame_impl.cc`, `content/browser/loader/browser_initiated_resource_request.cc`) nor the JS property is set. |
+| WebRTC | `default_public_interface_only` | `default_public_interface_only` | **covered by Haze** | `haze::SetProfilePrefDefaults` sets `kWebRTCIPHandlingPolicy` (ungoogled registers `disable_non_proxied_udp`, which takes UDP away from calls without a proxy). |
+| Global Privacy Control | On: `Sec-GPC: 1` and `navigator.globalPrivacyControl` | On, with a toggle in the cookie settings | **covered by Haze** | `privacy/turn-on-global-privacy-control.patch`: `kUniversalOptOutSettings` enabled and Blink's `GlobalPrivacyControlApi` moved from experimental to stable; `haze::SetProfilePrefDefaults` sets `universal_optout.enabled` to `true`. |
 | Tracking parameters | Stripped from top-level navigations | Not stripped | **needs a Haze patch** | Nothing in Chromium or ungoogled removes `utm_*`, `fbclid`, `gclid`, `msclkid`. |
 | Content blocking | On (native adblock-rust) | None | **needs a Haze patch** | Not part of Chromium or ungoogled; planned in `haze/components/`. |
 | Fingerprinting protection | Standard | Partial and off by default | **needs a Haze patch** | See the fingerprinting table below. |
-| AI features | Disabled and hidden | Model downloads removed; Gemini and "Help me write" still on | **needs a Haze patch** | ungoogled's `disable-ai.patch` removes the on-device model components (Screen AI, speech models, page content annotations, the AI parts of the PDF viewer). It does not touch the entry points: `kGlic` (Gemini in the browser) is `FEATURE_ENABLED_BY_DEFAULT` on macOS and Windows (`chrome/common/chrome_features.cc`), `kEnableCompose` ("Help me write") is enabled everywhere (`components/compose/core/browser/compose_features.cc`). Without Google keys they cannot work, which is the opposite of hidden. `kHistoryEmbeddings` (AI history search) is disabled by default. |
-| Privacy Sandbox ad APIs | Off | Removed or inert | **covered** by Chromium | By M158 Chromium itself has retired them: `document.browsingTopics()` always throws `NotSupportedError` (`browsing_topics_document_supplement.cc`), `joinAdInterestGroup()` resolves without doing anything (`navigator_auction.cc`), the Attribution Reporting browser code is gone (`content/browser/attribution_reporting/` holds only metadata), and `PrivacySandboxSettingsImpl` no longer has per-API gates. The M1 prefs that once gated them are still registered `false`. |
+| AI features | Disabled and hidden | Off; nothing shown | **covered by Haze** | `privacy/turn-off-and-hide-the-ai-features.patch`; the full list is under "AI features turned off" below. ungoogled's `disable-ai.patch` had removed only the model downloads. |
+| Privacy Sandbox ad APIs | Off | Off, and gone from the web platform | **covered by Chromium and Haze** | Chromium retired most of it by M158 (`document.browsingTopics()` throws, `joinAdInterestGroup()` is a no-op, the Attribution Reporting browser code is gone). Step 8 called this covered, but three surfaces were still reachable from pages: `privacy/turn-off-the-privacy-sandbox-ad-apis-that-pages-can-still-reach.patch` removes them, and Related Website Sets are off. See "Privacy Sandbox APIs turned off" below. |
 | Clear data on exit | Available, off by default | Available as a flag, off | **covered** by ungoogled | `chrome/browser/browser_features.cc`: `kClearDataOnExit` `FEATURE_DISABLED_BY_DEFAULT`, flag `clear-data-on-exit`; it deletes all browsing data in `chrome_browsing_data_lifetime_manager.cc`. Chromium's own "delete cookies and site data on close" setting also exists. A visible setting belongs to the settings UI step, not here. |
 | Telemetry | None, not even opt-in | None | **covered** by ungoogled | UMA consent defaults to `GoogleUpdateSettings::GetCollectStatsConsent()`, which on Linux is true only if a client-ID backup file exists, so false on a fresh profile (`chrome/installer/util/google_update_settings_posix.cc`); the upload hosts are domain-substituted. The settings toggle sits inside `<if expr="_google_chrome">` in `personalization_options.html`, so a Chromium-branded build has no opt-in at all. |
 | Crash upload | None | None | **covered** by ungoogled | Upload consent mirrors the metrics consent (`chrome/app/chrome_crash_reporter_client.cc`), and the upload URL is domain-substituted (`https://clients2.9oo91e.qjz9zk/cr/report` in `components/crash/core/app/crash_reporter_client.cc`). Crashpad still keeps a local database (see notes). |
 | Field trials | None | None | **covered** by ungoogled | `components/variations/service/variations_service.cc`: `IsFetchingEnabled()` returns `false`; the seed URL is domain-substituted; `disable_fieldtrial_testing_config=true` in ungoogled's `flags.gn`. |
+
+## AI features turned off
+
+Each is switched off where its default is defined, so `chrome://flags` and
+policies still see the upstream switch. On Linux, `kGlic` was already off.
+
+| Feature | Where | What it was |
+|---|---|---|
+| `kGlic` | `chrome/common/chrome_features.cc` | Gemini in Chrome: toolbar button, side panel, context menu, hotkey. On by default on macOS and Windows. |
+| `kGlicActor` | `chrome/common/chrome_features.cc` | Gemini acting on pages for the user |
+| `kEnableCompose` | `components/compose/core/browser/compose_features.cc` | "Help me write" in text fields |
+| `kNtpComposebox` | `chrome/browser/ui/webui/new_tab_page/composebox/variations/composebox_fieldtrial.cc` | AI compose box on the New Tab page |
+| `kOptimizationGuideModelExecution` | `components/optimization_guide/core/optimization_guide_features.cc` | Server-side model execution behind the features above |
+| `AIPromptAPI` (`LanguageModel`), `AISummarizationAPI` (`Summarizer`), `TranslationAPI` (`Translator`), `LanguageDetectionAPI` (`LanguageDetector`) | `third_party/blink/renderer/platform/runtime_enabled_features.json5`: stable → experimental | Built-in AI APIs exposed to every page; without models they only fail, and their presence is one more fingerprinting bit |
+
+Already off before Haze: AI history search (`kHistoryEmbeddings`), the AI
+settings page (ungoogled forces `showAiPage` to false), the Writer, Rewriter
+and Proofreader APIs (experimental), and all on-device model downloads
+(ungoogled's `disable-ai.patch`).
+
+## Privacy Sandbox APIs turned off
+
+| API | How | Why both |
+|---|---|---|
+| Topics (`document.browsingTopics`, `Sec-Browsing-Topics`) | `network::features::kBrowsingTopics` off and the Blink `TopicsAPI` status removed | `content/child/runtime_features.cc` copies a disabled base::Feature into Blink only when it is overridden, not when it is merely off by default |
+| Attribution Reporting (`attributionsrc`, `Attribution-Reporting-*`) | `attribution_reporting::features::kConversionMeasurement` off and the Blink `AttributionReporting` status removed | same |
+| Fenced frames (`<fencedframe>`, the Protected Audience rendering surface) | `blink::features::kFencedFrames` off | `ResolveInvalidConfigurations()` turns the Blink feature off whenever this one is off |
+| Related Website Sets | `privacy_sandbox.related_website_sets_enabled` default `false` (Haze default prefs) | they let a declared group of sites share cookies while third-party cookies are blocked |
+
+Left as they are: Private State Tokens, an anti-fraud API rather than an ad
+API (SPEC names ad APIs), and the M1 prefs for Topics, Protected Audience and
+ad measurement, which are still registered `false` and now gate nothing.
 
 ## Fingerprinting protection (standard level)
 
@@ -61,11 +95,13 @@ spoofing lives in a patch named after a flag.
 
 ## Requests Haze makes on its own
 
-None yet. SPEC allows exactly three kinds, each to be listed here with what,
-when, why and how to turn it off once it exists:
+SPEC allows filter list updates, update checks and Chrome Web Store traffic.
+Secure DNS adds one more, decided in step 9 because SPEC asks for automatic
+upgrade, which cannot work without it:
 
 | Request | When | Why | How to turn it off |
 |---|---|---|---|
+| DoH probe: one DNS-over-HTTPS query for `example.com` | Only when the system's DNS server is one of the known providers in `net/dns/public/doh_provider_entry.cc` (e.g. 1.1.1.1, 9.9.9.9, 194.242.2.2), at startup and after network changes, with backoff while the server fails. It goes to that same provider's DoH endpoint, never to anyone else. Never with a router or ISP resolver Chromium does not know. | Automatic mode only switches to DoH once a probe has succeeded | Settings → Privacy and security → Security → "Use secure DNS" off |
 | Filter list updates | — (content blocker not built yet) | | |
 | Update checks (Windows, macOS) | — (no updater yet) | | |
 | Chrome Web Store | — | only when the user installs or updates an extension | |
@@ -79,7 +115,10 @@ annotation that names the code behind them, host name lookups, TCP/UDP
 connects) and `ss`, sampled every second for sockets owned by the browser's
 processes, which also sees traffic outside the network service.
 
-**Result on Linux x64, 2026-11-27: zero requests.**
+**Result on Linux x64, 2026-11-27: zero requests**, both on the step-8
+build and again after step 9's defaults (Secure DNS automatic,
+DuckDuckGo, GPC). The DoH probe did not fire here because the system
+resolver is the router, which is not a known DoH provider.
 
 | | |
 |---|---|

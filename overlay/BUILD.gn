@@ -2,9 +2,20 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
+import("//testing/test.gni")
+
 # Everything Haze adds to Chromium hangs off this group, which //chrome/browser
-# depends on. It is empty for now; components/, browser/, common/ and renderer/
-# are added here as they appear, which keeps the hook into Chromium a single
-# GN dependency no matter how much Haze grows.
+# depends on, so the hook into Chromium stays a single GN dependency however
+# much Haze grows. Code that a Chromium file calls into directly is also a dep
+# of that file's target, which is what lets it include the header.
 group("haze") {
+  deps = [ "//haze/components/default_prefs" ]
+}
+
+test("haze_unittests") {
+  deps = [
+    "//base/test:run_all_unittests",
+    "//haze/browser:unit_tests",
+    "//haze/components/default_prefs:unit_tests",
+  ]
 }

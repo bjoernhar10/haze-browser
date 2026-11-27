@@ -1,0 +1,27 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Haze <patches@haze.invalid>
+Date: Fri, 27 Nov 2026 14:04:10 +0100
+Subject: [PATCH] Let Haze's code use Blink's public common headers
+
+Why: //third_party/blink/public/common:headers is visible only to a fixed list
+of directories, and //haze is not on it. Haze needs it for the WebRTC policy
+names its default prefs use and for Blink's feature declarations in its tests.
+This touches third_party/blink only to add //haze/* to that visibility list.
+Security-relevant: no
+Area: core
+---
+ third_party/blink/public/common/BUILD.gn | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/third_party/blink/public/common/BUILD.gn b/third_party/blink/public/common/BUILD.gn
+index cada4d7..443d629 100644
+--- a/third_party/blink/public/common/BUILD.gn
++++ b/third_party/blink/public/common/BUILD.gn
+@@ -112,6 +112,7 @@ source_set("headers") {
+     "//components/*",
+     "//content/*",
+     "//fuchsia/*",
++    "//haze/*",
+     "//pdf/*",
+     "//printing/*",
+     "//services/*",

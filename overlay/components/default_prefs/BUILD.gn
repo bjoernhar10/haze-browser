@@ -1,0 +1,34 @@
+# Copyright 2026 The Haze Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+source_set("default_prefs") {
+  sources = [
+    "default_prefs.cc",
+    "default_prefs.h",
+  ]
+  deps = [
+    "//base",
+    "//chrome/common:constants",
+    "//components/pref_registry",
+    "//components/privacy_sandbox:privacy_sandbox_prefs",
+    "//components/universal_optout",
+    "//third_party/blink/public/common:headers",
+  ]
+}
+
+source_set("unit_tests") {
+  testonly = true
+  sources = [ "default_prefs_unittest.cc" ]
+  deps = [
+    ":default_prefs",
+    "//base",
+    "//chrome/common:constants",
+    "//components/pref_registry",
+    "//components/privacy_sandbox:privacy_sandbox_prefs",
+    "//components/sync_preferences:test_support",
+    "//components/universal_optout",
+    "//testing/gtest",
+    "//third_party/blink/public/common:headers",
+  ]
+}

@@ -1,0 +1,164 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Haze <patches@haze.invalid>
+Date: Fri, 27 Nov 2026 14:01:22 +0100
+Subject: [PATCH] Upgrade DNS to DNS over HTTPS automatically
+
+Why: SPEC section 3 wants Secure DNS in automatic mode with Quad9, Mullvad and
+Cloudflare to pick from. ungoogled turned the mode and the upgrade mapping off,
+and domain substitution left the DoH probe asking for a name that never
+resolves, so automatic mode could never upgrade. This restores the mode and the
+mapping, probes example.com instead, adds Mullvad, turns Quad9's entry on and
+shows only those three in the settings dropdown; the other providers keep
+their upgrade mapping.
+Security-relevant: yes
+Security: Touches net/dns. Automatic mode falls back to plain DNS only where
+it did before; the change makes lookups encrypted for users whose resolver
+supports it. The probe sends one A query for example.com to the DoH server of
+the provider the system already uses, and only for known providers; this is
+listed in docs/PRIVACY.md and stops with Secure DNS off. Certificate checks
+for DoH are unchanged.
+Area: privacy
+---
+ .../net/default_dns_over_https_config_source.cc        |  2 +-
+ net/dns/dns_transaction.h                              |  2 +-
+ net/dns/public/doh_provider_entry.cc                   | 31 ++++++----
+ services/network/public/cpp/features.cc                |  2 +-
+ 4 files changed, 23 insertions(+), 14 deletions(-)
+
+diff --git a/chrome/browser/net/default_dns_over_https_config_source.cc b/chrome/browser/net/default_dns_over_https_config_source.cc
+index 9be2f1b..e5a2aad 100644
+--- a/chrome/browser/net/default_dns_over_https_config_source.cc
++++ b/chrome/browser/net/default_dns_over_https_config_source.cc
+@@ -29,7 +29,7 @@ DefaultDnsOverHttpsConfigSource::DefaultDnsOverHttpsConfigSource(
+   if (set_up_pref_defaults) {
+     local_state->SetDefaultPrefValue(prefs::kDnsOverHttpsMode,
+                                      base::Value(SecureDnsConfig::ModeToString(
+-                                         net::SecureDnsMode::kOff)));
++                                         net::SecureDnsMode::kAutomatic)));
+   }
+ }
+ 
+diff --git a/net/dns/dns_transaction.h b/net/dns/dns_transaction.h
+index 746b05d..df09505 100644
+--- a/net/dns/dns_transaction.h
++++ b/net/dns/dns_transaction.h
+@@ -29,7 +29,7 @@ class NetLogWithSource;
+ class ResolveContext;
+ 
+ // The hostname probed by CreateDohProbeRunner().
+-inline constexpr std::string_view kDohProbeHostname = "www.95tat1c.qjz9zk";
++inline constexpr std::string_view kDohProbeHostname = "example.com";
+ 
+ // DnsTransaction implements a stub DNS resolver as defined in RFC 1034.
+ // The DnsTransaction takes care of retransmissions, name server fallback (or
+diff --git a/net/dns/public/doh_provider_entry.cc b/net/dns/public/doh_provider_entry.cc
+index ff2b56e..e2d8d5d 100644
+--- a/net/dns/public/doh_provider_entry.cc
++++ b/net/dns/public/doh_provider_entry.cc
+@@ -98,7 +98,7 @@ const DohProviderEntry::List& DohProviderEntry::GetList() {
+            "https://doh.cleanbrowsing.org/doh/family-filter{?dns}",
+            /*ui_name=*/"CleanBrowsing (Family Filter)",
+            /*privacy_policy=*/"https://cleanbrowsing.org/privacy",
+-           /*display_globally=*/true,
++           /*display_globally=*/false,
+            /*display_countries=*/{},
+        },
+        {
+@@ -191,7 +191,7 @@ const DohProviderEntry::List& DohProviderEntry::GetList() {
+            /*ui_name=*/"CZ.NIC ODVR",
+            /*privacy_policy=*/"https://www.nic.cz/odvr/",
+            /*display_globally=*/false,
+-           /*display_countries=*/{"CZ"},
++           /*display_countries=*/{},
+        },
+        {"DNS4EU",
+         MAKE_STATIC_STORAGE_BASE_FEATURE(kDohProviderDns4eu,
+@@ -204,10 +204,7 @@ const DohProviderEntry::List& DohProviderEntry::GetList() {
+         "https://app-eu1.hubspotdocuments.com/documents/142290803/view/"
+         "1331719984?accessId=b505d9",
+         /*display_globally=*/false,
+-        /*display_countries=*/{"AT", "BE", "BG", "HR", "CY", "CZ", "DK",
+-                               "EE", "FI", "FR", "DE", "GR", "HU", "IE",
+-                               "IT", "LV", "LT", "LU", "MT", "NL", "PL",
+-                               "PT", "RO", "SK", "SI", "ES", "SE"},
++        /*display_countries=*/{},
+         /*dns_over_https_server_ip_strs=*/
+         {"86.54.11.1", "86.54.11.201", "2a13:1001::86:54:11:1",
+          "2a13:1001::86:54:11:201"}},
+@@ -221,7 +218,7 @@ const DohProviderEntry::List& DohProviderEntry::GetList() {
+            /*ui_name=*/"DNS.SB",
+            /*privacy_policy=*/"https://dns.sb/privacy/",
+            /*display_globally=*/false,
+-           /*display_countries=*/{"EE", "DE"},
++           /*display_countries=*/{},
+        },
+        {
+            "Iij",
+@@ -233,7 +230,7 @@ const DohProviderEntry::List& DohProviderEntry::GetList() {
+            /*ui_name=*/"IIJ (Public DNS)",
+            /*privacy_policy=*/"https://policy.public.dns.iij.jp/",
+            /*display_globally=*/false,
+-           /*display_countries=*/{"JP"},
++           /*display_countries=*/{},
+        },
+        {"Levonet",
+         MAKE_STATIC_STORAGE_BASE_FEATURE(kDohProviderLevonet,
+@@ -248,6 +245,18 @@ const DohProviderEntry::List& DohProviderEntry::GetList() {
+         /*display_countries=*/{},
+         {"109.236.119.2", "109.236.120.2", "2a02:6ca3:0:1::2",
+          "2a02:6ca3:0:2::2"}},
++       {
++           "Mullvad",
++           MAKE_STATIC_STORAGE_BASE_FEATURE(kDohProviderMullvad,
++                                            base::FEATURE_ENABLED_BY_DEFAULT),
++           {"194.242.2.2", "2a07:e340::2"},
++           /*dns_over_tls_hostnames=*/{"dns.mullvad.net"},
++           "https://dns.mullvad.net/dns-query{?dns}",
++           /*ui_name=*/"Mullvad",
++           /*privacy_policy=*/"https://mullvad.net/en/help/privacy-policy",
++           /*display_globally=*/true,
++           /*display_countries=*/{},
++       },
+        {
+            "NextDns",
+            MAKE_STATIC_STORAGE_BASE_FEATURE(kDohProviderNextDns,
+@@ -258,7 +267,7 @@ const DohProviderEntry::List& DohProviderEntry::GetList() {
+            /*ui_name=*/"NextDNS",
+            /*privacy_policy=*/"https://nextdns.io/privacy",
+            /*display_globally=*/false,
+-           /*display_countries=*/{"US"},
++           /*display_countries=*/{},
+        },
+        {
+            "OpenDNS",
+@@ -271,7 +280,7 @@ const DohProviderEntry::List& DohProviderEntry::GetList() {
+            /*ui_name=*/"OpenDNS",
+            "https://www.cisco.com/c/en/us/about/legal/"
+            /*privacy_policy=*/"privacy-full.html",
+-           /*display_globally=*/true,
++           /*display_globally=*/false,
+            /*display_countries=*/{},
+        },
+        {
+@@ -314,7 +323,7 @@ const DohProviderEntry::List& DohProviderEntry::GetList() {
+        {
+            "Quad9Secure",
+            MAKE_STATIC_STORAGE_BASE_FEATURE(kDohProviderQuad9Secure,
+-                                            base::FEATURE_DISABLED_BY_DEFAULT),
++                                            base::FEATURE_ENABLED_BY_DEFAULT),
+            {"9.9.9.9", "149.112.112.112", "2620:fe::fe", "2620:fe::9"},
+            /*dns_over_tls_hostnames=*/{"dns.quad9.net", "dns9.quad9.net"},
+            "https://dns.quad9.net/dns-query",
+diff --git a/services/network/public/cpp/features.cc b/services/network/public/cpp/features.cc
+index db1c7e2..ca0a441 100644
+--- a/services/network/public/cpp/features.cc
++++ b/services/network/public/cpp/features.cc
+@@ -83,7 +83,7 @@ BASE_FEATURE(kSplitAuthCacheByNetworkIsolationKey,
+ 
+ // Enable usage of hardcoded DoH upgrade mapping for use in automatic mode.
+ BASE_FEATURE(kDnsOverHttpsUpgrade,
+-             base::FEATURE_DISABLED_BY_DEFAULT
++             base::FEATURE_ENABLED_BY_DEFAULT
+ );
+ 
+ // When enabled, the requests in a third party context to domains included in

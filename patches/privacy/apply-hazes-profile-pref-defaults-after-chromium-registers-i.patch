@@ -1,0 +1,67 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Haze <patches@haze.invalid>
+Date: Fri, 27 Nov 2026 12:14:40 +0100
+Subject: [PATCH] Apply Haze's profile pref defaults after Chromium registers
+ its own
+
+Why: SPEC section 3 changes several defaults that Chromium registers in many
+different files. One call at the end of RegisterProfilePrefs hands them to
+//haze/components/default_prefs, so the defaults live in one place in Haze's
+own code and a rebase can only conflict on this one call.
+Security-relevant: yes
+Security: The defaults it sets tighten behaviour (HTTPS-First strict mode,
+WebRTC public-interface-only); it changes only defaults, so values the user or
+policy set keep precedence, and no pref is removed.
+Area: privacy
+---
+ chrome/browser/prefs/BUILD.gn         | 1 +
+ chrome/browser/prefs/DEPS             | 4 ++++
+ chrome/browser/prefs/browser_prefs.cc | 4 ++++
+ 3 files changed, 9 insertions(+)
+
+diff --git a/chrome/browser/prefs/BUILD.gn b/chrome/browser/prefs/BUILD.gn
+index f5ca87a..7138727 100644
+--- a/chrome/browser/prefs/BUILD.gn
++++ b/chrome/browser/prefs/BUILD.gn
+@@ -210,6 +210,7 @@ source_set("impl") {
+     "//components/wallet/core/common:prefs",
+     "//components/webui/chrome_urls",
+     "//components/webui/flags",
++    "//haze/components/default_prefs",
+     "//services/preferences/public/cpp/tracked",
+     "//services/preferences/public/mojom",
+     "//services/preferences/tracked",
+diff --git a/chrome/browser/prefs/DEPS b/chrome/browser/prefs/DEPS
+index d725aa6..65315af 100644
+--- a/chrome/browser/prefs/DEPS
++++ b/chrome/browser/prefs/DEPS
+@@ -1,3 +1,7 @@
++include_rules = [
++  "+haze/components/default_prefs",
++]
++
+ specific_include_rules = {
+   "profile_pref_store_manager\\.cc": [
+     "+services/preferences/tracked",
+diff --git a/chrome/browser/prefs/browser_prefs.cc b/chrome/browser/prefs/browser_prefs.cc
+index df16f69..a23e320 100644
+--- a/chrome/browser/prefs/browser_prefs.cc
++++ b/chrome/browser/prefs/browser_prefs.cc
+@@ -227,6 +227,7 @@
+ #include "content/public/browser/render_process_host.h"
+ #include "content/public/common/buildflags.h"
+ #include "extensions/buildflags/buildflags.h"
++#include "haze/components/default_prefs/default_prefs.h"
+ #include "net/http/http_server_properties_manager.h"
+ #include "pdf/buildflags.h"
+ #include "printing/buildflags/buildflags.h"
+@@ -2580,6 +2581,9 @@ void RegisterProfilePrefs(user_prefs::PrefRegistrySyncable* registry,
+ #endif  // BUILDFLAG(IS_ANDROID)
+ 
+   registry->RegisterBooleanPref(prefs::kStaticStorageQuotaEnabled, false);
++
++  // Haze changes defaults of prefs registered above; keep this call last.
++  haze::SetProfilePrefDefaults(registry);
+ }
+ 
+ void RegisterUserProfilePrefs(user_prefs::PrefRegistrySyncable* registry) {

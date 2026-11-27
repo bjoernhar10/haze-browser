@@ -2,6 +2,83 @@
 
 One entry per step: what is new, and how to test it.
 
+## Step 9 — Privacy defaults (2026-11-27)
+
+**What's new** (7 patches, `patches/privacy/` and one in `core/`)
+
+| Default | Now | How |
+|---|---|---|
+| HTTPS | strict HTTPS-First (warns before every HTTP page) | Haze default-prefs hook |
+| WebRTC | `default_public_interface_only` | hook (ungoogled's `disable_non_proxied_udp` broke calls without a proxy) |
+| Global Privacy Control | on: `Sec-GPC: 1` and `navigator.globalPrivacyControl`, toggle in cookie settings | hook + `kUniversalOptOutSettings` + Blink `GlobalPrivacyControlApi` → stable |
+| Related Website Sets | off | hook |
+| Secure DNS | automatic; dropdown: Quad9, Mullvad, Cloudflare, custom | patch to `net/dns` and two defaults ungoogled had turned off |
+| Search engine | DuckDuckGo, also in the 11 regions that do not list it | `GetPrepopulatedFallbackSearch`; replaced by the picker in step 27 |
+| AI | Gemini/Glic, its actor, Compose, NTP compose box, server model execution off; `LanguageModel`, `Summarizer`, `Translator`, `LanguageDetector` gone from pages | defaults where defined |
+| Privacy Sandbox | Topics, Attribution Reporting, fenced frames gone from pages | base::Features off; Topics and Attribution also lose their Blink status |
+
+Third-party cookies, search suggestions and preloading were already right
+(step 8). Step 8 found no requests, so there was nothing to fix there.
+
+- **One hook, one place.** `overlay/components/default_prefs/` holds every
+  changed pref default; the patch is an include, one call at the end of
+  `RegisterProfilePrefs`, a GN dep and a DEPS line. `SetDefaultPrefValue`
+  changes only the default, so user and policy values keep winning.
+- Feature defaults are changed where each is defined, one line each, so the
+  switch stays visible to `chrome://flags` and policy. These are disabled or
+  changed upstream defaults, not new Haze features, so there is no `kHaze*`
+  flag around them.
+- **Secure DNS needed a decision** (asked, answered: automatic with a working
+  probe). Automatic mode only upgrades after a DoH probe succeeds, and domain
+  substitution had turned the probe's Google name into one that never
+  resolves. The probe now asks for `example.com`. It only runs when the
+  system resolver is a known DoH provider, goes to that provider, and is
+  listed in `docs/PRIVACY.md` as Haze's one request of its own so far.
+- **Correction to step 8:** the audit called the Privacy Sandbox covered by
+  Chromium, but `attributionsrc` and `<fencedframe>` were still reachable from
+  pages, and so were four built-in AI APIs. Both are fixed here.
+- **Why the Blink JSON alone was not enough:** `content/child/runtime_features.cc`
+  copies a base::Feature into Blink only when it is enabled or overridden, so
+  a feature that is merely off by default leaves Blink's `stable` status in
+  charge.
+- `haze_unittests` exists now: 11 tests for the defaults, including that user
+  values survive the defaults being applied again.
+- Build fixes found on the way: `build.sh` and `build.ps1` now follow gclient's
+  rule that a gcs object without `output_file` is an archive (the test fonts
+  are one), and `build.sh` fetches the test fonts that `//base/test` needs on
+  Linux. `//third_party/blink/public/common:headers` gained `//haze/*` in its
+  visibility list.
+
+**Verified on Linux**
+
+| Check | Result |
+|---|---|
+| `haze_unittests --gtest_filter=Haze*` | 11/11 pass |
+| Settings, fresh profile | HTTPS strict on; Secure DNS on, "OS default (when available)"; dropdown = OS default, custom, Cloudflare, Mullvad, Quad9; third-party cookies blocked; GPC toggle on; DuckDuckGo (Default). Screenshots in `docs/screens/09/`. |
+| Prefs without settings UI (`chrome://prefs-internals/<pref>`) | `webrtc.ip_handling_policy` = `default_public_interface_only`; `privacy_sandbox.first_party_sets_enabled` = `false` |
+| A page on `http://127.0.0.1` | received `Sec-GPC: 1`; `navigator.globalPrivacyControl` true; `document.browsingTopics`, `attributionSrc`, `HTMLFencedFrameElement`, `joinAdInterestGroup`, `LanguageModel`, `Summarizer`, `Translator`, `LanguageDetector` all absent |
+| User values survive a restart | HTTPS-First off, Secure DNS off, GPC off and cookies "allow" set through `chrome.settingsPrivate` (what the toggles use) were still set after a restart |
+| `scripts/netcheck.sh` | zero requests in 5 minutes |
+| `patch.sh export` / `check` | no diff / 17 patches apply cleanly |
+
+Build: 18,401 edges, mostly Blink, because `runtime_enabled_features.json5`
+generates a header nearly all of it includes.
+
+**How to test**
+
+```sh
+HAZE_JOBS=5 scripts/build.sh dev chrome haze_unittests
+build/src/out/Dev/haze_unittests --gtest_filter='Haze*'
+scripts/netcheck.sh
+```
+
+**Platform coverage**
+
+Built and run on Linux only. The patches apply on every platform; `kGlic`
+(Gemini) is the change that matters only on macOS and Windows, where it was
+on, and it is untested there. The DoH probe path needs a machine whose
+resolver is 1.1.1.1, 9.9.9.9 or 194.242.2.2 to be observed.
+
 ## Step 8 — Privacy audit and network check (2026-11-27)
 
 **What's new**

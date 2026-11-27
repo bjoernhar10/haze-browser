@@ -8,3 +8,10 @@ core/give-haze-its-own-identity-on-macos.patch
 core/give-haze-its-own-install-identity-on-windows.patch
 core/name-the-windows-executable-haze-exe.patch
 core/use-a-placeholder-haze-icon-instead-of-chromiums-logo.patch
+core/let-hazes-code-use-blinks-public-common-headers.patch
+privacy/apply-hazes-profile-pref-defaults-after-chromium-registers-i.patch
+privacy/turn-on-global-privacy-control.patch
+privacy/turn-off-and-hide-the-ai-features.patch
+privacy/turn-off-the-privacy-sandbox-ad-apis-that-pages-can-still-re.patch
+privacy/make-duckduckgo-the-default-search-engine.patch
+privacy/upgrade-dns-to-dns-over-https-automatically.patch

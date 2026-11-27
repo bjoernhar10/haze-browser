@@ -1,0 +1,152 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Haze <patches@haze.invalid>
+Date: Fri, 27 Nov 2026 12:15:28 +0100
+Subject: [PATCH] Turn off and hide the AI features
+
+Why: Haze has no AI features (SPEC section 3), and ungoogled only removes the
+model downloads: Gemini in Chrome (Glic, on by default on macOS and Windows),
+its actor, "Help me write" (Compose), the NTP compose box and server-side model
+execution stay on, and pages see the built-in AI APIs (LanguageModel,
+Summarizer, Translator, LanguageDetector). Each is switched off where its
+default is defined; the web APIs go from stable to experimental, like their
+Writer and Rewriter siblings.
+Security-relevant: yes
+Security: Touches third_party/blink only to change the status of four
+runtime features from stable to experimental, which removes API surface. The
+other changes turn features off.
+Area: privacy
+---
+ .../composebox/variations/composebox_fieldtrial.cc     |  2 +-
+ chrome/common/chrome_features.cc                       |  4 +-
+ components/compose/core/browser/compose_features.cc    |  2 +-
+ .../core/optimization_guide_features.cc                |  2 +-
+ .../renderer/platform/runtime_enabled_features.json5   | 34 +++++-----
+ 5 files changed, 22 insertions(+), 22 deletions(-)
+
+diff --git a/chrome/browser/ui/webui/new_tab_page/composebox/variations/composebox_fieldtrial.cc b/chrome/browser/ui/webui/new_tab_page/composebox/variations/composebox_fieldtrial.cc
+index cfbc19e..3335702 100644
+--- a/chrome/browser/ui/webui/new_tab_page/composebox/variations/composebox_fieldtrial.cc
++++ b/chrome/browser/ui/webui/new_tab_page/composebox/variations/composebox_fieldtrial.cc
+@@ -165,7 +165,7 @@ CreateQueryControllerConfigParams() {
+   return config_params;
+ }
+ 
+-BASE_FEATURE(kNtpComposebox, base::FEATURE_ENABLED_BY_DEFAULT);
++BASE_FEATURE(kNtpComposebox, base::FEATURE_DISABLED_BY_DEFAULT);
+ 
+ const base::FeatureParam<std::string> kConfigParam(&kNtpComposebox,
+                                                    "NtpComposeboxConfigParam",
+diff --git a/chrome/common/chrome_features.cc b/chrome/common/chrome_features.cc
+index ddb54a1..3e3e85a 100644
+--- a/chrome/common/chrome_features.cc
++++ b/chrome/common/chrome_features.cc
+@@ -241,7 +241,7 @@ BASE_FEATURE(kForcedAppRelaunchOnPlaceholderUpdate,
+ #endif  // BUILDFLAG(IS_CHROMEOS)
+ 
+ // Controls whether the actor component of Glic is enabled.
+-BASE_FEATURE(kGlicActor, base::FEATURE_ENABLED_BY_DEFAULT);
++BASE_FEATURE(kGlicActor, base::FEATURE_DISABLED_BY_DEFAULT);
+ 
+ BASE_FEATURE(kGlicActorApcComparison, base::FEATURE_ENABLED_BY_DEFAULT);
+ 
+@@ -528,7 +528,7 @@ BASE_FEATURE(kGlicMessageFirstFre, base::FEATURE_DISABLED_BY_DEFAULT);
+ BASE_FEATURE(kGlic,
+ #if BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN) || BUILDFLAG(IS_CHROMEOS) || \
+     BUILDFLAG(IS_ANDROID)
+-             base::FEATURE_ENABLED_BY_DEFAULT
++             base::FEATURE_DISABLED_BY_DEFAULT
+ #else
+              base::FEATURE_DISABLED_BY_DEFAULT
+ #endif
+diff --git a/components/compose/core/browser/compose_features.cc b/components/compose/core/browser/compose_features.cc
+index bc0d7b5..0f37566 100644
+--- a/components/compose/core/browser/compose_features.cc
++++ b/components/compose/core/browser/compose_features.cc
+@@ -10,7 +10,7 @@ namespace compose::features {
+ 
+ // Note: Compose is enabled by default because it is country--restricted at
+ // runtime.
+-BASE_FEATURE(kEnableCompose, "Compose", base::FEATURE_ENABLED_BY_DEFAULT);
++BASE_FEATURE(kEnableCompose, "Compose", base::FEATURE_DISABLED_BY_DEFAULT);
+ 
+ BASE_FEATURE(kComposeInputParams, base::FEATURE_DISABLED_BY_DEFAULT);
+ 
+diff --git a/components/optimization_guide/core/optimization_guide_features.cc b/components/optimization_guide/core/optimization_guide_features.cc
+index c55a8ef..0e1846b 100644
+--- a/components/optimization_guide/core/optimization_guide_features.cc
++++ b/components/optimization_guide/core/optimization_guide_features.cc
+@@ -98,7 +98,7 @@ BASE_FEATURE(kOptimizationGuidePredictionModelKillswitch,
+ 
+ // Whether to enable model execution.
+ BASE_FEATURE(kOptimizationGuideModelExecution,
+-             base::FEATURE_ENABLED_BY_DEFAULT);
++             base::FEATURE_DISABLED_BY_DEFAULT);
+ 
+ // Whether the on device service is launched after a delay on startup to log
+ // metrics.
+diff --git a/third_party/blink/renderer/platform/runtime_enabled_features.json5 b/third_party/blink/renderer/platform/runtime_enabled_features.json5
+index 6591893..9aaaed9 100644
+--- a/third_party/blink/renderer/platform/runtime_enabled_features.json5
++++ b/third_party/blink/renderer/platform/runtime_enabled_features.json5
+@@ -459,10 +459,10 @@
+       name: "AIPromptAPI",
+       public: true,
+       status: {
+-        "Win": "stable",
+-        "Mac": "stable",
+-        "Linux": "stable",
+-        "ChromeOS": "stable",
++        "Win": "experimental",
++        "Mac": "experimental",
++        "Linux": "experimental",
++        "ChromeOS": "experimental",
+         "default": "",
+       },
+     },
+@@ -563,10 +563,10 @@
+     {
+       name: "AISummarizationAPI",
+       status: {
+-        "Win": "stable",
+-        "Mac": "stable",
+-        "Linux": "stable",
+-        "ChromeOS": "stable",
++        "Win": "experimental",
++        "Mac": "experimental",
++        "Linux": "experimental",
++        "ChromeOS": "experimental",
+         "default": "",
+       },
+     },
+@@ -4105,11 +4105,11 @@
+     {
+       name: "LanguageDetectionAPI",
+       status: {
+-        "Win": "stable",
+-        "Mac": "stable",
+-        "Linux": "stable",
+-        "ChromeOS": "stable",
+-        "Android": "stable",
++        "Win": "experimental",
++        "Mac": "experimental",
++        "Linux": "experimental",
++        "ChromeOS": "experimental",
++        "Android": "experimental",
+         "default": "",
+       },
+       base_feature_status: "enabled",
+@@ -7020,10 +7020,10 @@
+     {
+       name: "TranslationAPI",
+       status: {
+-        "Win": "stable",
+-        "Mac": "stable",
+-        "Linux": "stable",
+-        "ChromeOS": "stable",
++        "Win": "experimental",
++        "Mac": "experimental",
++        "Linux": "experimental",
++        "ChromeOS": "experimental",
+         "default": "",
+       },
+       base_feature_status: "enabled",

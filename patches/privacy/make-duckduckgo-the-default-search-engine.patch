@@ -1,0 +1,37 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Haze <patches@haze.invalid>
+Date: Fri, 27 Nov 2026 12:16:48 +0100
+Subject: [PATCH] Make DuckDuckGo the default search engine
+
+Why: ungoogled replaces Google with "No Search", which leaves the address bar
+without a search engine; SPEC section 3 wants no Google default and a choice
+on first run. Until that picker lands (step 27), DuckDuckGo is the fallback
+default, taken from the built-in data in the 11 regions that do not list it.
+Security-relevant: no
+Area: privacy
+---
+ .../search_engines/template_url_prepopulate_data.cc    | 11 +++++++---
+ 1 file changed, 8 insertions(+), 3 deletions(-)
+
+diff --git a/components/search_engines/template_url_prepopulate_data.cc b/components/search_engines/template_url_prepopulate_data.cc
+index a25ad76..8ba30c4 100644
+--- a/components/search_engines/template_url_prepopulate_data.cc
++++ b/components/search_engines/template_url_prepopulate_data.cc
+@@ -358,9 +358,14 @@ std::unique_ptr<TemplateURLData> GetPrepopulatedFallbackSearch(
+     PrefService& prefs,
+     const std::vector<raw_ptr<const PrepopulatedEngine>>&
+         regional_prepopulated_engines) {
+-  return FindPrepopulatedEngineInternal(prefs, regional_prepopulated_engines,
+-                                        google.id,
+-                                        /*use_first_as_fallback=*/true);
++  // Haze: DuckDuckGo until the first-run search engine picker exists. Taken
++  // from the built-in data when the region does not list it, so that it, and
++  // not ungoogled's "No Search", is the default everywhere.
++  std::unique_ptr<TemplateURLData> engine = FindPrepopulatedEngineInternal(
++      prefs, regional_prepopulated_engines, duckduckgo.id,
++      /*use_first_as_fallback=*/false);
++  return engine ? std::move(engine)
++                : TemplateURLDataFromPrepopulatedEngine(duckduckgo);
+ }
+ 
+ }  // namespace TemplateURLPrepopulateData

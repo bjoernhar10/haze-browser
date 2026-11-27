@@ -135,6 +135,8 @@ ensure_toolchain() {
       fi
       # Blink runs gperf from this path on Linux; macOS uses Xcode's.
       link_host_tool gperf "${HAZE_SRC_DIR}/third_party/gperf/cipd/bin/gperf"
+      # //base/test pulls these into every test binary on Linux.
+      ensure_test_fonts
       ;;
     mac) ensure_xcode ;;
   esac
@@ -180,6 +182,15 @@ ensure_libclang() {
 # Chromium pins an exact node and asserts the version during the build, so the
 # host's node will not do: third_party/node:check_version fails the build when
 # it differs. The pinned one is a gcs archive like the others.
+ensure_test_fonts() {
+  local dir="${HAZE_SRC_DIR}/third_party/test_fonts/test_fonts"
+  ensure_gcs_dep \
+    'src/third_party/test_fonts/test_fonts' \
+    "${dir}" \
+    "${dir}/Ahem.ttf" \
+    'test fonts'
+}
+
 # The directory and archive names are the ones third_party/node/node.gni and
 # node.py expect for each host.
 ensure_node() {
@@ -226,20 +237,14 @@ ensure_gcs_dep() {
     haze_die "${label} does not match the sha256 DEPS declares for it"
   fi
 
-  # An object_name can be a bare hash, so the kind of download is decided by
-  # output_file when the entry names one. gclient does the same.
-  local name="${output}"
-  if [ "${name}" = '-' ]; then
-    name="${object##*/}"
-  fi
-  case "${name}" in
-    *.tar.xz | *.tar.gz | *.tgz)
+  # gclient's rule: an object without output_file is an archive to unpack into
+  # the dep's directory; with one, it is that file, unless the name says it is
+  # an archive. object_name alone says nothing, as it can be a bare hash.
+  case "${output}" in
+    - | *.tar.xz | *.tar.gz | *.tgz)
       haze_run tar -xf "${archive}" -C "${dest}"
       ;;
     *)
-      if [ "${output}" = '-' ]; then
-        haze_die "${label}: DEPS names no output_file and the object is not an archive"
-      fi
       install -m755 "${archive}" "${dest}/${output}"
       ;;
   esac

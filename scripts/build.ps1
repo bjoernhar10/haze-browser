@@ -270,15 +270,14 @@ function Install-GcsDep([string] $Entry, [string] $Dest, [string] $Sentinel, [st
     Remove-Item -LiteralPath $file
     Stop-Haze "$Label does not match the sha256 DEPS declares for it"
   }
-  # An object_name can be a bare hash, so output_file decides, as in gclient.
-  $name = $output -eq '-' ? $object : $output
-  if ($name -match '\.(tar\.xz|tar\.gz|tgz)$') {
+  # gclient's rule: an object without output_file is an archive to unpack into
+  # the dep's directory; with one, it is that file, unless the name says it is
+  # an archive. object_name alone says nothing, as it can be a bare hash.
+  if ($output -eq '-' -or $output -match '\.(tar\.xz|tar\.gz|tgz)$') {
     Expand-Tarball $file $Dest
-  } elseif ($output -ne '-') {
+  } else {
     New-Item -ItemType Directory -Force -Path $Dest | Out-Null
     Copy-Item -LiteralPath $file -Destination (Join-Path $Dest $output) -Force
-  } else {
-    Stop-Haze "${Label}: DEPS names no output_file and the object is not an archive"
   }
   if (-not (Test-Path -LiteralPath $Sentinel)) {
     Stop-Haze "$Label download did not provide $(Split-Path -Leaf $Sentinel)"
